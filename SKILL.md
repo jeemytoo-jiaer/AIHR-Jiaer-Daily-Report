@@ -66,7 +66,7 @@ Publish to Feishu:
 ```bash
 FEISHU_APP_ID=cli_xxx \
 FEISHU_APP_SECRET=xxx \
-FEISHU_DOCUMENT_ID=doxcnxxx \
+FEISHU_DOCUMENT_ID='https://xxx.feishu.cn/wiki/FfDlwTA3Ji3DU3kaxLJcV3D7nIf' \
 python3 scripts/ai_hr_daily_brief.py --publish-feishu --output-dir output
 ```
 

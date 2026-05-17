@@ -4,7 +4,7 @@
 
 - `FEISHU_APP_ID`: Feishu/Lark internal app ID.
 - `FEISHU_APP_SECRET`: Feishu/Lark internal app secret.
-- `FEISHU_DOCUMENT_ID`: Existing Feishu Docx document ID where daily sections should be prepended.
+- `FEISHU_DOCUMENT_ID`: Existing Feishu Docx document ID, Docx URL, Wiki node token, or Wiki URL where daily sections should be prepended.
 
 Optional:
 
@@ -13,22 +13,31 @@ Optional:
 
 ## Document Setup
 
-Create one Feishu document manually, for example `AIHR 嘉尔日报`. Copy the document ID from the URL:
+Create one Feishu document manually, for example `AIHR 嘉尔日报`. Copy either the Docx URL/token or the Wiki URL/token.
+
+Docx URL:
 
 ```text
 https://xxx.feishu.cn/docx/doxcnxxxxxxxx
 ```
 
-Use the `doxcnxxxxxxxx` part as `FEISHU_DOCUMENT_ID`.
+Wiki URL:
+
+```text
+https://xxx.feishu.cn/wiki/FfDlwTA3Ji3DU3kaxLJcV3D7nIf
+```
+
+The script resolves Wiki tokens to the underlying Docx `obj_token` through the Wiki API before writing.
 
 ## API Flow
 
 The script uses:
 
 1. `POST /open-apis/auth/v3/tenant_access_token/internal` to get `tenant_access_token`.
-2. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` to insert Markdown-like text blocks at index `0`.
+2. If `FEISHU_DOCUMENT_ID` is a Wiki token or URL, `GET /open-apis/wiki/v2/spaces/get_node?token=...` to resolve the underlying Docx `obj_token`.
+3. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` to insert Markdown-like text blocks at index `0`.
 
-Feishu permissions vary by tenant. If publishing fails with `forbidden`, confirm that the app has Docx read/write scopes and permission to edit the target document.
+Feishu permissions vary by tenant. If publishing fails with `forbidden`, confirm that the app has Wiki read scope when using Wiki URLs, Docx read/write scopes, and permission to edit the target document.
 
 ## Operational Notes
 

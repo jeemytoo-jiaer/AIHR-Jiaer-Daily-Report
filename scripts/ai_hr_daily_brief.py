@@ -611,13 +611,59 @@ def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, A
     return result
 
 
+def feishu_get(base_url: str, path: str, token: str, timeout: int) -> dict[str, Any]:
+    req = urllib.request.Request(
+        base_url.rstrip("/") + path,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        body = response.read().decode("utf-8", errors="replace")
+    result = json.loads(body)
+    if result.get("code") not in (0, None):
+        raise RuntimeError(f"Feishu API error at {path}: {result}")
+    return result
+
+
+def extract_feishu_token(value: str) -> tuple[str, str]:
+    text = value.strip()
+    wiki_match = re.search(r"/wiki/([A-Za-z0-9_-]+)", text)
+    if wiki_match:
+        return wiki_match.group(1), "wiki"
+    docx_match = re.search(r"/docx/([A-Za-z0-9_-]+)", text)
+    if docx_match:
+        return docx_match.group(1), "docx"
+    if text.startswith("http"):
+        raise RuntimeError("FEISHU_DOCUMENT_ID must be a /docx/ URL, /wiki/ URL, docx token, or wiki node token.")
+    if text.startswith(("dox", "doxcn")):
+        return text, "docx"
+    return text, "wiki"
+
+
+def resolve_feishu_document_id(base_url: str, raw_value: str, token: str, timeout: int) -> tuple[str, str]:
+    extracted, token_type = extract_feishu_token(raw_value)
+    if token_type == "docx":
+        return extracted, "docx"
+
+    query = urllib.parse.urlencode({"token": extracted})
+    result = feishu_get(base_url, f"/open-apis/wiki/v2/spaces/get_node?{query}", token, timeout)
+    node = result.get("data", {}).get("node", {})
+    obj_type = node.get("obj_type")
+    obj_token = node.get("obj_token")
+    if obj_type != "docx" or not obj_token:
+        raise RuntimeError(f"Wiki token resolved to obj_type={obj_type!r}, not a docx document: {result}")
+    return str(obj_token), "wiki"
+
+
 def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     app_id = os.environ.get("FEISHU_APP_ID")
     app_secret = os.environ.get("FEISHU_APP_SECRET")
-    document_id = os.environ.get("FEISHU_DOCUMENT_ID")
-    root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
+    raw_document_id = os.environ.get("FEISHU_DOCUMENT_ID")
     base_url = os.environ.get("FEISHU_BASE_URL", "https://open.feishu.cn")
-    if not app_id or not app_secret or not document_id or not root_block_id:
+    if not app_id or not app_secret or not raw_document_id:
         raise RuntimeError("Missing FEISHU_APP_ID, FEISHU_APP_SECRET, or FEISHU_DOCUMENT_ID.")
 
     token_result = feishu_api(
@@ -631,6 +677,9 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     if not token:
         raise RuntimeError(f"Feishu token response did not contain tenant_access_token: {token_result}")
 
+    document_id, resolved_from = resolve_feishu_document_id(base_url, raw_document_id, token, timeout)
+    root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
+
     content = markdown_path.read_text(encoding="utf-8")
     blocks = markdown_to_feishu_blocks(content)
     feishu_api(
@@ -640,6 +689,8 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
         {"children": blocks, "index": 0, "revision_id": -1},
         timeout,
     )
+    if resolved_from == "wiki" and raw_document_id.startswith("http"):
+        return raw_document_id
     return f"{base_url.rstrip('/')}/docx/{document_id}"
 
 
