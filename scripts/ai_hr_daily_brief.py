@@ -566,7 +566,7 @@ def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[R
             "- [x] 已排除非目标日期新闻。",
             "- [x] 已确认链接可打开且包含实际内容。",
             "- [x] 无内容时使用“当日无高质量信息源”，未填充旧闻。",
-            "- [x] 文档标题与所有日期区块已按目标日期复核。",
+            "- [x] 每日区块标题与所有日期区块已按目标日期复核。",
             "",
             "## 采集统计",
             "",
@@ -585,7 +585,7 @@ def write_outputs(output_dir: Path, day: dt.date, accepted: list[AcceptedItem], 
     markdown = render_markdown(day, accepted, rejected)
     markdown_path.write_text(markdown, encoding="utf-8")
     report = {
-        "document_title": doc_date,
+        "daily_section_date": doc_date,
         "generated_at": dt.datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "accepted_count": len(accepted),
         "rejected_count": len(rejected),
@@ -614,10 +614,11 @@ def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, A
 def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     app_id = os.environ.get("FEISHU_APP_ID")
     app_secret = os.environ.get("FEISHU_APP_SECRET")
-    folder_token = os.environ.get("FEISHU_FOLDER_TOKEN")
+    document_id = os.environ.get("FEISHU_DOCUMENT_ID")
+    root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
     base_url = os.environ.get("FEISHU_BASE_URL", "https://open.feishu.cn")
-    if not app_id or not app_secret or not folder_token:
-        raise RuntimeError("Missing FEISHU_APP_ID, FEISHU_APP_SECRET, or FEISHU_FOLDER_TOKEN.")
+    if not app_id or not app_secret or not document_id or not root_block_id:
+        raise RuntimeError("Missing FEISHU_APP_ID, FEISHU_APP_SECRET, or FEISHU_DOCUMENT_ID.")
 
     token_result = feishu_api(
         base_url,
@@ -630,27 +631,13 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     if not token:
         raise RuntimeError(f"Feishu token response did not contain tenant_access_token: {token_result}")
 
-    create_result = feishu_api(
-        base_url,
-        "/open-apis/docx/v1/documents",
-        token,
-        {"folder_token": folder_token, "title": title},
-        timeout,
-    )
-    document = create_result.get("data", {}).get("document", {}) or create_result.get("data", {})
-    document_id = document.get("document_id") or document.get("id")
-    revision_id = document.get("revision_id", -1)
-    if not document_id:
-        raise RuntimeError(f"Feishu create document response missing document_id: {create_result}")
-
     content = markdown_path.read_text(encoding="utf-8")
     blocks = markdown_to_feishu_blocks(content)
-    block_id = document.get("block_id") or document.get("document_id") or document_id
     feishu_api(
         base_url,
-        f"/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children",
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children",
         token,
-        {"children": blocks, "index": 0, "revision_id": revision_id},
+        {"children": blocks, "index": 0, "revision_id": -1},
         timeout,
     )
     return f"{base_url.rstrip('/')}/docx/{document_id}"
@@ -715,7 +702,7 @@ def main() -> int:
     rejected = rss_rejections + verification_rejections
     markdown_path = write_outputs(Path(args.output_dir), day, accepted, rejected, candidates)
 
-    print(f"Document title: {fmt_doc_date(day)}")
+    print(f"Daily section: {fmt_doc_date(day)}")
     print(f"Markdown: {markdown_path}")
     print(f"Accepted: {len(accepted)}")
     print(f"Rejected: {len(rejected)}")

@@ -21,7 +21,8 @@ jobs:
         env:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
+          FEISHU_DOCUMENT_ID: ${{ secrets.FEISHU_DOCUMENT_ID }}
+          FEISHU_ROOT_BLOCK_ID: ${{ secrets.FEISHU_ROOT_BLOCK_ID }}
         run: python3 scripts/ai_hr_daily_brief.py --publish-feishu --output-dir output
       - name: Upload verification artifacts
         if: always()

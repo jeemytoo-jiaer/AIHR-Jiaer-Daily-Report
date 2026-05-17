@@ -4,22 +4,31 @@
 
 - `FEISHU_APP_ID`: Feishu/Lark internal app ID.
 - `FEISHU_APP_SECRET`: Feishu/Lark internal app secret.
-- `FEISHU_FOLDER_TOKEN`: Cloud Drive folder token where daily docs should be created.
+- `FEISHU_DOCUMENT_ID`: Existing Feishu Docx document ID where daily sections should be prepended.
 
 Optional:
 
 - `FEISHU_BASE_URL`: Defaults to `https://open.feishu.cn`.
-- `FEISHU_OPEN_ID`: Optional owner/open id if your tenant permission model requires it.
+- `FEISHU_ROOT_BLOCK_ID`: Optional root block ID. Defaults to `FEISHU_DOCUMENT_ID`, which is the usual root block for Docx documents.
+
+## Document Setup
+
+Create one Feishu document manually, for example `AIHR 嘉尔日报`. Copy the document ID from the URL:
+
+```text
+https://xxx.feishu.cn/docx/doxcnxxxxxxxx
+```
+
+Use the `doxcnxxxxxxxx` part as `FEISHU_DOCUMENT_ID`.
 
 ## API Flow
 
 The script uses:
 
 1. `POST /open-apis/auth/v3/tenant_access_token/internal` to get `tenant_access_token`.
-2. `POST /open-apis/docx/v1/documents` to create a document titled `YYYY.MM.DD` in the configured folder.
-3. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` to append Markdown-like text blocks when the Docx block API is available.
+2. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` to insert Markdown-like text blocks at index `0`.
 
-Feishu permissions vary by tenant. If publishing fails with `forbidden`, confirm that the app has document creation/edit scopes and permission to the target folder.
+Feishu permissions vary by tenant. If publishing fails with `forbidden`, confirm that the app has Docx read/write scopes and permission to edit the target document.
 
 ## Operational Notes
 
