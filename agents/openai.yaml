@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI+HR Daily Brief"
+  short_description: "Collect verified same-day AI+HR news and publish a Feishu daily brief."
+  default_prompt: "Generate today's AI+HR daily brief for 嘉尔, verify every item against the same-day quality gate, and publish it to Feishu if credentials are available."
