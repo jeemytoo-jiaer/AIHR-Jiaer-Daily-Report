@@ -752,9 +752,9 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     blocks = markdown_to_feishu_blocks(content)
     feishu_api(
         base_url,
-        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children",
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?document_revision_id=-1",
         token,
-        {"children": blocks, "index": 0, "revision_id": -1},
+        {"children": blocks, "index": 0},
         timeout,
     )
     print(f"Feishu token source: {token_source}")
