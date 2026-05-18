@@ -646,9 +646,7 @@ def extract_feishu_token(value: str) -> tuple[str, str]:
         return docx_match.group(1), "docx"
     if text.startswith("http"):
         raise RuntimeError("FEISHU_DOCUMENT_ID must be a /docx/ URL, /wiki/ URL, docx token, or wiki node token.")
-    if text.startswith(("dox", "doxcn")):
-        return text, "docx"
-    return text, "wiki"
+    return text, "docx"
 
 
 def resolve_feishu_document_id(base_url: str, raw_value: str, token: str, timeout: int) -> tuple[str, str]:
@@ -673,14 +671,7 @@ def resolve_feishu_document_id(base_url: str, raw_value: str, token: str, timeou
     return str(obj_token), "wiki"
 
 
-def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
-    app_id = os.environ.get("FEISHU_APP_ID")
-    app_secret = os.environ.get("FEISHU_APP_SECRET")
-    raw_document_id = os.environ.get("FEISHU_DOCUMENT_ID")
-    base_url = os.environ.get("FEISHU_BASE_URL", "https://open.feishu.cn")
-    if not app_id or not app_secret or not raw_document_id:
-        raise RuntimeError("Missing FEISHU_APP_ID, FEISHU_APP_SECRET, or FEISHU_DOCUMENT_ID.")
-
+def get_feishu_tenant_access_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> str:
     token_result = feishu_api(
         base_url,
         "/open-apis/auth/v3/tenant_access_token/internal",
@@ -691,6 +682,68 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     token = token_result.get("tenant_access_token")
     if not token:
         raise RuntimeError(f"Feishu token response did not contain tenant_access_token: {token_result}")
+    return str(token)
+
+
+def get_feishu_app_access_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> str:
+    token_result = feishu_api(
+        base_url,
+        "/open-apis/auth/v3/app_access_token/internal",
+        None,
+        {"app_id": app_id, "app_secret": app_secret},
+        timeout,
+    )
+    token = token_result.get("app_access_token")
+    if not token:
+        raise RuntimeError(f"Feishu token response did not contain app_access_token: {token_result}")
+    return str(token)
+
+
+def maybe_write_rotated_refresh_token(refresh_token: str) -> None:
+    output_path = os.environ.get("FEISHU_TOKEN_OUTPUT_PATH")
+    if not output_path:
+        return
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(refresh_token.strip() + "\n", encoding="utf-8")
+
+
+def get_feishu_write_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> tuple[str, str]:
+    explicit_user_token = os.environ.get("FEISHU_USER_ACCESS_TOKEN") or os.environ.get("FEISHU_ACCESS_TOKEN")
+    if explicit_user_token:
+        return explicit_user_token, "user_access_token"
+
+    refresh_token = os.environ.get("FEISHU_REFRESH_TOKEN")
+    if refresh_token:
+        app_token = get_feishu_app_access_token(base_url, app_id, app_secret, timeout)
+        refresh_result = feishu_api(
+            base_url,
+            "/open-apis/authen/v1/refresh_access_token",
+            app_token,
+            {"grant_type": "refresh_token", "refresh_token": refresh_token},
+            timeout,
+        )
+        data = refresh_result.get("data", refresh_result)
+        access_token = data.get("access_token")
+        rotated_refresh_token = data.get("refresh_token")
+        if not access_token:
+            raise RuntimeError(f"Feishu OAuth refresh response did not contain access_token: {refresh_result}")
+        if rotated_refresh_token:
+            maybe_write_rotated_refresh_token(str(rotated_refresh_token))
+        return str(access_token), "user_access_token"
+
+    return get_feishu_tenant_access_token(base_url, app_id, app_secret, timeout), "tenant_access_token"
+
+
+def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
+    app_id = os.environ.get("FEISHU_APP_ID")
+    app_secret = os.environ.get("FEISHU_APP_SECRET")
+    raw_document_id = os.environ.get("FEISHU_DOCUMENT_ID")
+    base_url = os.environ.get("FEISHU_BASE_URL", "https://open.feishu.cn")
+    if not app_id or not app_secret or not raw_document_id:
+        raise RuntimeError("Missing FEISHU_APP_ID, FEISHU_APP_SECRET, or FEISHU_DOCUMENT_ID.")
+
+    token, token_source = get_feishu_write_token(base_url, app_id, app_secret, timeout)
 
     document_id, resolved_from = resolve_feishu_document_id(base_url, raw_document_id, token, timeout)
     root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
@@ -704,9 +757,13 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
         {"children": blocks, "index": 0, "revision_id": -1},
         timeout,
     )
-    if resolved_from == "wiki" and raw_document_id.startswith("http"):
+    print(f"Feishu token source: {token_source}")
+    if raw_document_id.startswith("http"):
         return raw_document_id
-    return f"{base_url.rstrip('/')}/docx/{document_id}"
+    doc_base_url = os.environ.get("FEISHU_DOC_BASE_URL")
+    if doc_base_url:
+        return f"{doc_base_url.rstrip('/')}/docx/{document_id}"
+    return f"docx:{document_id}"
 
 
 def markdown_to_feishu_blocks(markdown: str) -> list[dict[str, Any]]:

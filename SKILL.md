@@ -66,10 +66,27 @@ Publish to Feishu:
 ```bash
 FEISHU_APP_ID=cli_xxx \
 FEISHU_APP_SECRET=xxx \
-FEISHU_DOCUMENT_ID='https://xxx.feishu.cn/wiki/FfDlwTA3Ji3DU3kaxLJcV3D7nIf' \
+FEISHU_DOCUMENT_ID='https://xxx.feishu.cn/docx/U8xXd7p5toLGWKxSScmc2CfAnde' \
+FEISHU_REFRESH_TOKEN=xxx \
 python3 scripts/ai_hr_daily_brief.py --publish-feishu --output-dir output
+```
+
+For manually owned Feishu cloud documents, generate the first personal OAuth refresh token:
+
+```bash
+FEISHU_APP_ID=cli_xxx \
+FEISHU_REDIRECT_URI='https://example.com/feishu-oauth-callback' \
+python3 scripts/feishu_oauth.py auth-url
+
+FEISHU_APP_ID=cli_xxx \
+FEISHU_APP_SECRET=xxx \
+python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'
 ```
 
 ## Scheduling
 
 For GitHub Actions, use `.github/workflows/daily-ai-hr-brief.yml`. It runs at 08:00 Asia/Shanghai (`00:00 UTC`) and expects Feishu secrets to be configured in the GitHub repository. Each run prepends the new daily section to the same Feishu document.
+
+If a manually created Feishu document rejects app writes, run `.github/workflows/create-feishu-doc.yml` once with `FEISHU_FOLDER_TOKEN` configured. Use its printed `FEISHU_DOCUMENT_ID` for the daily workflow.
+
+If Feishu also rejects app-created documents or folders, use personal OAuth instead. Add `FEISHU_REFRESH_TOKEN` and `GH_SECRET_PAT` as GitHub Actions secrets so the scheduled workflow can write as the document owner and rotate the Feishu refresh token after every run.

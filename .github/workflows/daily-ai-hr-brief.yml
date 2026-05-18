@@ -23,10 +23,31 @@ jobs:
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_DOCUMENT_ID: ${{ secrets.FEISHU_DOCUMENT_ID }}
           FEISHU_ROOT_BLOCK_ID: ${{ secrets.FEISHU_ROOT_BLOCK_ID }}
+          FEISHU_REFRESH_TOKEN: ${{ secrets.FEISHU_REFRESH_TOKEN }}
+          FEISHU_USER_ACCESS_TOKEN: ${{ secrets.FEISHU_USER_ACCESS_TOKEN }}
+          FEISHU_TOKEN_OUTPUT_PATH: output/feishu_refresh_token.txt
         run: python3 scripts/ai_hr_daily_brief.py --publish-feishu --output-dir output
+      - name: Rotate Feishu refresh token secret
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRET_PAT }}
+        run: |
+          if [ ! -s output/feishu_refresh_token.txt ]; then
+            echo "No rotated Feishu refresh token was produced."
+            exit 0
+          fi
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::FEISHU_REFRESH_TOKEN was rotated, but GH_SECRET_PAT is not configured. Add a GitHub token that can write repository secrets, then re-run."
+            exit 1
+          fi
+          token="$(cat output/feishu_refresh_token.txt)"
+          echo "::add-mask::$token"
+          gh secret set FEISHU_REFRESH_TOKEN --body "$token"
       - name: Upload verification artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-hr-daily-brief
-          path: output/
+          path: |
+            output/*.md
+            output/verification_report.json
