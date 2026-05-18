@@ -760,14 +760,20 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
 
     content = markdown_path.read_text(encoding="utf-8")
     blocks = markdown_to_feishu_blocks(content)
-    query = urllib.parse.urlencode({"document_revision_id": revision_id})
-    feishu_api(
-        base_url,
-        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?{query}",
-        token,
-        {"children": blocks, "index": 0},
-        timeout,
-    )
+    for chunk in reversed(chunk_blocks(blocks, size=40)):
+        query = urllib.parse.urlencode({"document_revision_id": revision_id})
+        result = feishu_api(
+            base_url,
+            f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?{query}",
+            token,
+            {"children": chunk, "index": 0},
+            timeout,
+        )
+        next_revision_id = result.get("data", {}).get("document_revision_id")
+        if isinstance(next_revision_id, int):
+            revision_id = next_revision_id
+        else:
+            revision_id = get_feishu_document_revision_id(base_url, document_id, token, timeout)
     print(f"Feishu token source: {token_source}")
     if raw_document_id.startswith("http"):
         return raw_document_id
@@ -777,6 +783,24 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
     return f"docx:{document_id}"
 
 
+def chunk_blocks(blocks: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
+    return [blocks[index:index + size] for index in range(0, len(blocks), size)]
+
+
+def text_elements(content: str) -> dict[str, Any]:
+    return {
+        "elements": [
+            {
+                "text_run": {
+                    "content": content,
+                    "text_element_style": {},
+                }
+            }
+        ],
+        "style": {},
+    }
+
+
 def markdown_to_feishu_blocks(markdown: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for raw_line in markdown.splitlines():
@@ -784,36 +808,32 @@ def markdown_to_feishu_blocks(markdown: str) -> list[dict[str, Any]]:
         if not line:
             continue
         block_type = 2
+        content_key = "text"
         text = line
         if line.startswith("# "):
             block_type = 3
+            content_key = "heading1"
             text = line[2:]
         elif line.startswith("## "):
             block_type = 4
+            content_key = "heading2"
             text = line[3:]
         elif line.startswith("### "):
             block_type = 5
+            content_key = "heading3"
             text = line[4:]
         elif line.startswith("- "):
             block_type = 12
+            content_key = "bullet"
             text = line[2:]
         elif line.startswith("> "):
-            block_type = 14
+            block_type = 15
+            content_key = "quote"
             text = line[2:]
         blocks.append(
             {
                 "block_type": block_type,
-                "text": {
-                    "style": {},
-                    "elements": [
-                        {
-                            "text_run": {
-                                "content": text,
-                                "text_element_style": {},
-                            }
-                        }
-                    ],
-                },
+                content_key: text_elements(text),
             }
         )
     return blocks
