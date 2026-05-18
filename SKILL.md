@@ -22,7 +22,6 @@ Each accepted item must include:
 
 - Title in Chinese
 - One-sentence factual summary
-- Why it matters to HR/recruiters/founders
 - Original URL
 
 Do not include backend audit details in the Feishu document body, including source-only rows, raw publish timestamps, verification notes, self-check checklists, or collection statistics. Keep those details only in `verification_report.json`.

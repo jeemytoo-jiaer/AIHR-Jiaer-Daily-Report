@@ -17,6 +17,7 @@ import html
 import json
 import os
 import re
+import time
 import sys
 import textwrap
 import urllib.error
@@ -150,6 +151,8 @@ class TextExtractor(HTMLParser):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate a verified AI+HR daily brief.")
     parser.add_argument("--target-date", help="Target date in YYYY.MM.DD. Defaults to today in timezone.")
+    parser.add_argument("--start-date", help="Backfill start date in YYYY.MM.DD. Requires --end-date.")
+    parser.add_argument("--end-date", help="Backfill end date in YYYY.MM.DD. Requires --start-date.")
     parser.add_argument("--timezone", default="Asia/Shanghai", help="IANA timezone. Default: Asia/Shanghai.")
     parser.add_argument("--output-dir", default="output", help="Directory for Markdown and verification JSON.")
     parser.add_argument("--max-items-per-module", type=int, default=6)
@@ -157,6 +160,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-total-candidates", type=int, default=24)
     parser.add_argument("--timeout", type=int, default=15)
     parser.add_argument("--publish-feishu", action="store_true")
+    parser.add_argument("--replace-feishu", action="store_true", help="Delete existing top-level Feishu document content before publishing.")
     parser.add_argument("--allow-backfill", action="store_true", help="Allow fetch date to differ from target date.")
     return parser.parse_args()
 
@@ -165,6 +169,19 @@ def target_date(args: argparse.Namespace, tz: ZoneInfo) -> dt.date:
     if args.target_date:
         return dt.datetime.strptime(args.target_date, "%Y.%m.%d").date()
     return dt.datetime.now(tz).date()
+
+
+def target_dates(args: argparse.Namespace, tz: ZoneInfo) -> list[dt.date]:
+    if bool(args.start_date) != bool(args.end_date):
+        raise RuntimeError("--start-date and --end-date must be used together.")
+    if args.start_date and args.end_date:
+        start = dt.datetime.strptime(args.start_date, "%Y.%m.%d").date()
+        end = dt.datetime.strptime(args.end_date, "%Y.%m.%d").date()
+        if start > end:
+            raise RuntimeError("--start-date must be on or before --end-date.")
+        days = (end - start).days
+        return [end - dt.timedelta(days=offset) for offset in range(days + 1)]
+    return [target_date(args, tz)]
 
 
 def fmt_doc_date(day: dt.date) -> str:
@@ -211,11 +228,15 @@ def decode_source_url(url: str) -> str:
     return url
 
 
-def google_news_rss_url(query: str, lang: str) -> str:
+def google_news_rss_url(query: str, lang: str, day: dt.date | None = None) -> str:
+    date_filter = "when:1d"
+    if day is not None:
+        next_day = day + dt.timedelta(days=1)
+        date_filter = f"after:{day.isoformat()} before:{next_day.isoformat()}"
     if lang == "zh":
-        params = {"q": f"{query} when:1d", "hl": "zh-CN", "gl": "CN", "ceid": "CN:zh-Hans"}
+        params = {"q": f"{query} {date_filter}", "hl": "zh-CN", "gl": "CN", "ceid": "CN:zh-Hans"}
     else:
-        params = {"q": f"{query} when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"}
+        params = {"q": f"{query} {date_filter}", "hl": "en-US", "gl": "US", "ceid": "US:en"}
     return "https://news.google.com/rss/search?" + urllib.parse.urlencode(params)
 
 
@@ -229,7 +250,7 @@ def parse_feed_datetime(value: str | None, tz: ZoneInfo) -> tuple[str | None, st
     return local_datetime_label(parsed, tz), local_date(parsed, tz)
 
 
-def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total: int) -> tuple[list[Candidate], list[RejectedItem]]:
+def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total: int, day: dt.date | None = None) -> tuple[list[Candidate], list[RejectedItem]]:
     candidates: list[Candidate] = []
     rejected: list[RejectedItem] = []
     seen_urls: set[str] = set()
@@ -238,7 +259,7 @@ def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total:
         for query in queries:
             langs = ["zh", "en"] if module == "ai_hr" else ["en", "zh"]
             for lang in langs:
-                feed_url = google_news_rss_url(query, lang)
+                feed_url = google_news_rss_url(query, lang, day)
                 try:
                     status, _, body = request_url(feed_url, timeout)
                     if status != 200:
@@ -554,13 +575,17 @@ def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[R
                 [
                     f"### {index}. {item.title}",
                     f"- 摘要：{item.summary}",
-                    f"- 对HR/猎头/企业主的意义：{item.relevance}",
                     f"- 链接：{item.final_url}",
                     "",
                 ]
             )
 
     return "\n".join(lines).strip() + "\n"
+
+
+def render_combined_markdown(markdown_paths: list[Path]) -> str:
+    sections = [path.read_text(encoding="utf-8").strip() for path in markdown_paths]
+    return "\n\n".join(section for section in sections if section).strip() + "\n"
 
 
 def write_outputs(output_dir: Path, day: dt.date, accepted: list[AcceptedItem], rejected: list[RejectedItem], candidates: list[Candidate]) -> Path:
@@ -583,12 +608,19 @@ def write_outputs(output_dir: Path, day: dt.date, accepted: list[AcceptedItem], 
     return markdown_path
 
 
-def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+def feishu_request(
+    base_url: str,
+    path: str,
+    token: str | None,
+    payload: dict[str, Any] | None,
+    timeout: int,
+    method: str,
+) -> dict[str, Any]:
+    data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json; charset=utf-8"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(base_url.rstrip("/") + path, data=data, headers=headers, method="POST")
+    req = urllib.request.Request(base_url.rstrip("/") + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
@@ -599,6 +631,14 @@ def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, A
     if result.get("code") not in (0, None):
         raise RuntimeError(f"Feishu API error at {path}: {result}")
     return result
+
+
+def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    return feishu_request(base_url, path, token, payload, timeout, "POST")
+
+
+def feishu_delete(base_url: str, path: str, token: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    return feishu_request(base_url, path, token, payload, timeout, "DELETE")
 
 
 def feishu_get(base_url: str, path: str, token: str, timeout: int) -> dict[str, Any]:
@@ -666,6 +706,47 @@ def get_feishu_document_revision_id(base_url: str, document_id: str, token: str,
     return revision_id
 
 
+def list_feishu_root_children(base_url: str, document_id: str, root_block_id: str, token: str, timeout: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    page_token = ""
+    while True:
+        params = {"page_size": 500}
+        if page_token:
+            params["page_token"] = page_token
+        query = urllib.parse.urlencode(params)
+        result = feishu_get(
+            base_url,
+            f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?{query}",
+            token,
+            timeout,
+        )
+        data = result.get("data", {})
+        items.extend(data.get("items", []))
+        if not data.get("has_more") or not data.get("page_token"):
+            return items
+        page_token = str(data["page_token"])
+
+
+def clear_feishu_document(base_url: str, document_id: str, root_block_id: str, token: str, timeout: int) -> int:
+    deleted = 0
+    while True:
+        children = list_feishu_root_children(base_url, document_id, root_block_id, token, timeout)
+        if not children:
+            return deleted
+        revision_id = get_feishu_document_revision_id(base_url, document_id, token, timeout)
+        count = len(children)
+        query = urllib.parse.urlencode({"document_revision_id": revision_id})
+        feishu_delete(
+            base_url,
+            f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children/batch_delete?{query}",
+            token,
+            {"start_index": 0, "end_index": count},
+            timeout,
+        )
+        deleted += count
+        time.sleep(0.3)
+
+
 def get_feishu_tenant_access_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> str:
     token_result = feishu_api(
         base_url,
@@ -730,7 +811,7 @@ def get_feishu_write_token(base_url: str, app_id: str, app_secret: str, timeout:
     return get_feishu_tenant_access_token(base_url, app_id, app_secret, timeout), "tenant_access_token"
 
 
-def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
+def publish_feishu(markdown_path: Path, title: str, timeout: int, replace_existing: bool = False) -> str:
     app_id = os.environ.get("FEISHU_APP_ID")
     app_secret = os.environ.get("FEISHU_APP_SECRET")
     raw_document_id = os.environ.get("FEISHU_DOCUMENT_ID")
@@ -742,6 +823,9 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
 
     document_id, resolved_from = resolve_feishu_document_id(base_url, raw_document_id, token, timeout)
     root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
+    if replace_existing:
+        deleted = clear_feishu_document(base_url, document_id, root_block_id, token, timeout)
+        print(f"Feishu cleared top-level blocks: {deleted}")
     revision_id = get_feishu_document_revision_id(base_url, document_id, token, timeout)
 
     content = markdown_path.read_text(encoding="utf-8")
@@ -828,36 +912,53 @@ def markdown_to_feishu_blocks(markdown: str) -> list[dict[str, Any]]:
 def main() -> int:
     args = parse_args()
     tz = ZoneInfo(args.timezone)
-    day = target_date(args, tz)
+    days = target_dates(args, tz)
+    output_dir = Path(args.output_dir)
+    markdown_paths: list[Path] = []
+    total_accepted = 0
+    total_rejected = 0
 
-    candidates, rss_rejections = collect_candidates(tz, args.timeout, args.max_candidates_per_feed, args.max_total_candidates)
-    accepted, verification_rejections = verify_candidates(
-        candidates,
-        day,
-        tz,
-        args.timeout,
-        args.max_items_per_module,
-        args.allow_backfill,
-    )
-    rejected = rss_rejections + verification_rejections
-    markdown_path = write_outputs(Path(args.output_dir), day, accepted, rejected, candidates)
+    for day in days:
+        candidates, rss_rejections = collect_candidates(tz, args.timeout, args.max_candidates_per_feed, args.max_total_candidates, day)
+        accepted, verification_rejections = verify_candidates(
+            candidates,
+            day,
+            tz,
+            args.timeout,
+            args.max_items_per_module,
+            args.allow_backfill or len(days) > 1,
+        )
+        rejected = rss_rejections + verification_rejections
+        markdown_path = write_outputs(output_dir / fmt_doc_date(day) if len(days) > 1 else output_dir, day, accepted, rejected, candidates)
+        markdown_paths.append(markdown_path)
+        total_accepted += len(accepted)
+        total_rejected += len(rejected)
 
-    print(f"Daily section: {fmt_doc_date(day)}")
-    print(f"Markdown: {markdown_path}")
-    print(f"Accepted: {len(accepted)}")
-    print(f"Rejected: {len(rejected)}")
+        print(f"Daily section: {fmt_doc_date(day)}")
+        print(f"Markdown: {markdown_path}")
+        print(f"Accepted: {len(accepted)}")
+        print(f"Rejected: {len(rejected)}")
+
+    publish_path = markdown_paths[0]
+    if len(markdown_paths) > 1:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        publish_path = output_dir / f"{fmt_doc_date(days[-1])}_to_{fmt_doc_date(days[0])}.md"
+        publish_path.write_text(render_combined_markdown(markdown_paths), encoding="utf-8")
+        print(f"Combined Markdown: {publish_path}")
 
     if args.publish_feishu:
-        url = publish_feishu(markdown_path, fmt_doc_date(day), args.timeout)
+        url = publish_feishu(publish_path, fmt_doc_date(days[0]), args.timeout, args.replace_feishu)
         print(f"Feishu document: {url}")
 
-    if not accepted:
+    if total_accepted == 0:
         print(textwrap.dedent(
             """
             No same-day high-quality sources passed the gate.
             The generated document uses: 当日无高质量信息源
             """
         ).strip())
+    print(f"Total accepted: {total_accepted}")
+    print(f"Total rejected: {total_rejected}")
     return 0
 
 
