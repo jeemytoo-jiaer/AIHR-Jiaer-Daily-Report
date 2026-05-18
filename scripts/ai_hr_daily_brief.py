@@ -177,6 +177,13 @@ def local_date(value: dt.datetime, tz: ZoneInfo) -> str:
     return value.astimezone(tz).strftime("%Y.%m.%d")
 
 
+def local_datetime_label(value: dt.datetime, tz: ZoneInfo) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=tz)
+    local_value = value.astimezone(tz)
+    return f"{local_value.strftime('%Y-%m-%d %H:%M:%S')} UTC{local_value.strftime('%z')[:3]}:{local_value.strftime('%z')[3:]}（北京时间）"
+
+
 def request_url(url: str, timeout: int, headers: dict[str, str] | None = None) -> tuple[int, str, str]:
     req = urllib.request.Request(
         url,
@@ -219,7 +226,7 @@ def parse_feed_datetime(value: str | None, tz: ZoneInfo) -> tuple[str | None, st
         parsed = email.utils.parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return value, None
-    return parsed.isoformat(), local_date(parsed, tz)
+    return local_datetime_label(parsed, tz), local_date(parsed, tz)
 
 
 def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total: int) -> tuple[list[Candidate], list[RejectedItem]]:
@@ -479,10 +486,10 @@ def verify_candidates(
             rejected.append(RejectedItem(candidate.module, candidate.title, source_url, "AI+HR relevance not established", candidate.source, candidate.query))
             continue
 
-        page_date_iso = matching_page_dates[0].astimezone(tz).isoformat() if matching_page_dates[0].tzinfo else matching_page_dates[0].replace(tzinfo=tz).isoformat()
+        page_date_label = local_datetime_label(matching_page_dates[0], tz)
         note = (
-            f"三步校验通过：抓取时间 {now.isoformat()}；RSS发布时间 {candidate.feed_published_at}；"
-            f"页面日期证据 {page_date_iso}；目标日期 {doc_date}。"
+            f"三步校验通过：抓取时间 {local_datetime_label(now, tz)}；RSS发布时间（北京时间）{candidate.feed_published_at}；"
+            f"页面日期证据（北京时间）{page_date_label}；目标日期 {doc_date}。"
         )
         accepted.append(
             AcceptedItem(
@@ -491,7 +498,7 @@ def verify_candidates(
                 url=candidate.url,
                 final_url=final_url,
                 source=candidate.source,
-                published_at=candidate.feed_published_at or page_date_iso,
+                published_at=candidate.feed_published_at or page_date_label,
                 published_local_date=doc_date,
                 summary=summarize(candidate.title, visible_text),
                 relevance=relevance_note(candidate.module, candidate.title, visible_text),
@@ -532,8 +539,6 @@ def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[R
     lines = [
         f"# {doc_date}",
         "",
-        f"> 生成时间：{dt.datetime.now(ZoneInfo('Asia/Shanghai')).isoformat()}",
-        "",
     ]
 
     for module, heading in MODULES.items():
@@ -550,30 +555,11 @@ def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[R
                     f"### {index}. {item.title}",
                     f"- 摘要：{item.summary}",
                     f"- 对HR/猎头/企业主的意义：{item.relevance}",
-                    f"- 来源：{item.source}",
-                    f"- 发布时间：{item.published_at}",
                     f"- 链接：{item.final_url}",
-                    f"- 校验：{item.verification_note}",
                     "",
                 ]
             )
 
-    lines.extend(
-        [
-            "## 自查清单确认",
-            "",
-            "- [x] 每条新闻的三步日期校验已执行。",
-            "- [x] 已排除非目标日期新闻。",
-            "- [x] 已确认链接可打开且包含实际内容。",
-            "- [x] 无内容时使用“当日无高质量信息源”，未填充旧闻。",
-            "- [x] 每日区块标题与所有日期区块已按目标日期复核。",
-            "",
-            "## 采集统计",
-            "",
-            f"- 通过：{len(accepted)}",
-            f"- 拒绝：{len(rejected)}",
-        ]
-    )
     return "\n".join(lines).strip() + "\n"
 
 

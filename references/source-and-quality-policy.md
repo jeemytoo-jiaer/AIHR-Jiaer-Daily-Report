@@ -60,7 +60,7 @@ Accept an item only when all are true:
 4. The item is relevant to one of the two document modules.
 5. The item is not a duplicate of a higher-quality source.
 
-If a source has a date in another timezone, convert it to Asia/Shanghai for final matching, but preserve the original timestamp in the verification note when possible.
+If a source has a date in another timezone, convert it to Asia/Shanghai for final matching. Keep original timestamps and verification notes only in `verification_report.json`; do not publish raw timestamps, source-only rows, checklists, or collection statistics into the reader-facing Feishu document.
 
 ## Ranking
 
