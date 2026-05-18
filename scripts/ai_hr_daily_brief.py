@@ -603,8 +603,12 @@ def feishu_api(base_url: str, path: str, token: str | None, payload: dict[str, A
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(base_url.rstrip("/") + path, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        body = response.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Feishu HTTP {exc.code} at {path}: {body}") from exc
     result = json.loads(body)
     if result.get("code") not in (0, None):
         raise RuntimeError(f"Feishu API error at {path}: {result}")
@@ -620,8 +624,12 @@ def feishu_get(base_url: str, path: str, token: str, timeout: int) -> dict[str, 
         },
         method="GET",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        body = response.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            body = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Feishu HTTP {exc.code} at {path}: {body}") from exc
     result = json.loads(body)
     if result.get("code") not in (0, None):
         raise RuntimeError(f"Feishu API error at {path}: {result}")
@@ -649,7 +657,14 @@ def resolve_feishu_document_id(base_url: str, raw_value: str, token: str, timeou
         return extracted, "docx"
 
     query = urllib.parse.urlencode({"token": extracted})
-    result = feishu_get(base_url, f"/open-apis/wiki/v2/spaces/get_node?{query}", token, timeout)
+    try:
+        result = feishu_get(base_url, f"/open-apis/wiki/v2/spaces/get_node?{query}", token, timeout)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Failed to resolve Feishu Wiki token. If FEISHU_DOCUMENT_ID is a /wiki/ link, "
+            "the Feishu app must have Wiki read permission and must be a member/admin of the target Wiki space or page. "
+            f"Raw Feishu response: {exc}"
+        ) from exc
     node = result.get("data", {}).get("node", {})
     obj_type = node.get("obj_type")
     obj_token = node.get("obj_token")

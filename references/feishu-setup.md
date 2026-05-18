@@ -37,7 +37,7 @@ The script uses:
 2. If `FEISHU_DOCUMENT_ID` is a Wiki token or URL, `GET /open-apis/wiki/v2/spaces/get_node?token=...` to resolve the underlying Docx `obj_token`.
 3. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` to insert Markdown-like text blocks at index `0`.
 
-Feishu permissions vary by tenant. If publishing fails with `forbidden`, confirm that the app has Wiki read scope when using Wiki URLs, Docx read/write scopes, and permission to edit the target document.
+Feishu permissions vary by tenant. If publishing fails while resolving a Wiki URL, confirm that the app has Wiki read scope, such as `wiki:wiki:readonly`, and that the app or bot has read access to the target Wiki space/page. If publishing fails while inserting blocks, confirm that the app has Docx read/write scopes and permission to edit the target document.
 
 ## Operational Notes
 
