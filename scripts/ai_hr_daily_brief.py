@@ -671,6 +671,15 @@ def resolve_feishu_document_id(base_url: str, raw_value: str, token: str, timeou
     return str(obj_token), "wiki"
 
 
+def get_feishu_document_revision_id(base_url: str, document_id: str, token: str, timeout: int) -> int:
+    result = feishu_get(base_url, f"/open-apis/docx/v1/documents/{document_id}", token, timeout)
+    document = result.get("data", {}).get("document", {})
+    revision_id = document.get("revision_id")
+    if not isinstance(revision_id, int):
+        raise RuntimeError(f"Feishu document info response did not contain integer revision_id: {result}")
+    return revision_id
+
+
 def get_feishu_tenant_access_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> str:
     token_result = feishu_api(
         base_url,
@@ -747,12 +756,14 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int) -> str:
 
     document_id, resolved_from = resolve_feishu_document_id(base_url, raw_document_id, token, timeout)
     root_block_id = os.environ.get("FEISHU_ROOT_BLOCK_ID") or document_id
+    revision_id = get_feishu_document_revision_id(base_url, document_id, token, timeout)
 
     content = markdown_path.read_text(encoding="utf-8")
     blocks = markdown_to_feishu_blocks(content)
+    query = urllib.parse.urlencode({"document_revision_id": revision_id})
     feishu_api(
         base_url,
-        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?document_revision_id=-1",
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?{query}",
         token,
         {"children": blocks, "index": 0},
         timeout,
