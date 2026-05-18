@@ -47,12 +47,13 @@ The script resolves Wiki tokens to the underlying Docx `obj_token` through the W
 
 Use this path when Feishu returns `1770032 forbidden` while inserting document blocks, or `1770040 no folder permission` while creating a document. Those errors mean the app identity cannot edit the personal cloud document/folder. OAuth lets the workflow write as the document owner.
 
-1. In the Feishu developer console, add a redirect URL for the app. For a manual setup, a placeholder you control is enough, for example `https://example.com/feishu-oauth-callback`.
-2. Set local environment variables `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_REDIRECT_URI`.
-3. Run `python3 scripts/feishu_oauth.py auth-url`, open the printed URL, approve access, and copy the redirected URL.
-4. Run `python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'`.
-5. Save the printed value as GitHub Actions secret `FEISHU_REFRESH_TOKEN`.
-6. Add GitHub Actions secret `GH_SECRET_PAT`, using a GitHub token that can update repository Actions secrets.
+1. In the Feishu developer console, add user-identity permissions for Docx document read/write, especially `docx:document` or `docx:document:write_only`, then publish the app version.
+2. Add a redirect URL for the app. For a manual setup, a placeholder you control is enough, for example `https://example.com/feishu-oauth-callback`.
+3. Set local environment variables `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_REDIRECT_URI`.
+4. Run `python3 scripts/feishu_oauth.py auth-url`, open the printed URL, approve access, and copy the redirected URL. The helper requests `docx:document docx:document:write_only` by default.
+5. Run `python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'`.
+6. Save the printed value as GitHub Actions secret `FEISHU_REFRESH_TOKEN`.
+7. Add GitHub Actions secret `GH_SECRET_PAT`, using a GitHub token that can update repository Actions secrets.
 
 After this, `.github/workflows/daily-ai-hr-brief.yml` refreshes the Feishu user token, writes the daily section, then rotates `FEISHU_REFRESH_TOKEN` in GitHub Secrets.
 

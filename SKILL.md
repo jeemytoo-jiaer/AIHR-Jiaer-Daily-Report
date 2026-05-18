@@ -90,3 +90,5 @@ For GitHub Actions, use `.github/workflows/daily-ai-hr-brief.yml`. It runs at 08
 If a manually created Feishu document rejects app writes, run `.github/workflows/create-feishu-doc.yml` once with `FEISHU_FOLDER_TOKEN` configured. Use its printed `FEISHU_DOCUMENT_ID` for the daily workflow.
 
 If Feishu also rejects app-created documents or folders, use personal OAuth instead. Add `FEISHU_REFRESH_TOKEN` and `GH_SECRET_PAT` as GitHub Actions secrets so the scheduled workflow can write as the document owner and rotate the Feishu refresh token after every run.
+
+For personal OAuth, the Feishu app must open the Docx permissions as user-identity scopes, not only app-identity scopes. The OAuth helper requests `docx:document docx:document:write_only` by default.

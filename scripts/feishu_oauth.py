@@ -13,6 +13,9 @@ import urllib.parse
 import urllib.request
 
 
+DEFAULT_DOCX_SCOPES = "docx:document docx:document:write_only"
+
+
 def feishu_post(base_url: str, path: str, token: str | None, payload: dict, timeout: int = 20) -> dict:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json; charset=utf-8"}
@@ -70,8 +73,9 @@ def command_auth_url(args: argparse.Namespace) -> int:
         "redirect_uri": redirect_uri,
         "state": state,
     }
-    if args.scope:
-        params["scope"] = args.scope
+    scope = args.scope or DEFAULT_DOCX_SCOPES
+    if scope:
+        params["scope"] = scope
     print("Open this URL, approve the app, then copy the redirected URL:")
     print("https://open.feishu.cn/open-apis/authen/v1/index?" + urllib.parse.urlencode(params))
     print(f"State: {state}")
@@ -127,7 +131,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     auth_url = subparsers.add_parser("auth-url", help="Print the user authorization URL.")
-    auth_url.add_argument("--scope", default="", help="Optional OAuth scope string.")
+    auth_url.add_argument("--scope", default="", help=f"OAuth scope string. Defaults to: {DEFAULT_DOCX_SCOPES}")
     auth_url.add_argument("--state", default="", help="Optional state value.")
     auth_url.set_defaults(func=command_auth_url)
 
