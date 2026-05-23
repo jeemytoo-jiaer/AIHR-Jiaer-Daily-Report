@@ -48,11 +48,36 @@ QUERIES = {
         '("AI HR" OR "AI recruiting" OR "AI hiring")',
         '("talent acquisition AI" OR "HR tech AI" OR "workforce AI")',
         '("人力资源 AI" OR "招聘 AI" OR "猎头 AI")',
+        '("AI员工" OR "AI面试" OR "AI简历筛选" OR "AI招聘助手")',
+        '(site:36kr.com OR site:tmtpost.com OR site:infoq.cn) ("AI HR" OR "AI招聘" OR "人力资源 AI")',
+        '(site:hroot.com OR site:hrtechchina.com OR site:mokahr.com) ("AI" OR "人工智能")',
     ],
     "global_ai": [
         '("artificial intelligence" OR "generative AI")',
         '("AI regulation" OR "AI safety" OR "AI model release")',
         '("OpenAI" OR "Google DeepMind" OR "Anthropic" OR "Microsoft AI" OR "NVIDIA AI")',
+        '("人工智能" OR "大模型" OR "生成式AI")',
+        '(site:36kr.com OR site:tmtpost.com OR site:qbitai.com OR site:jiqizhixin.com) ("人工智能" OR "大模型" OR "AI")',
+        '(site:ithome.com OR site:leiphone.com OR site:infoq.cn OR site:ifanr.com) ("AI" OR "人工智能" OR "大模型")',
+    ],
+}
+
+DIRECT_RSS_FEEDS = {
+    "ai_hr": [
+        ("36氪", "https://36kr.com/feed"),
+        ("钛媒体", "https://www.tmtpost.com/rss.xml"),
+        ("InfoQ中文", "https://www.infoq.cn/feed"),
+    ],
+    "global_ai": [
+        ("36氪", "https://36kr.com/feed"),
+        ("钛媒体", "https://www.tmtpost.com/rss.xml"),
+        ("量子位", "https://www.qbitai.com/feed"),
+        ("InfoQ中文", "https://www.infoq.cn/feed"),
+        ("爱范儿", "https://www.ifanr.com/feed"),
+        ("IT之家", "https://www.ithome.com/rss/"),
+        ("雷峰网", "https://www.leiphone.com/feed"),
+        ("开源中国", "https://www.oschina.net/news/rss"),
+        ("少数派", "https://sspai.com/feed"),
     ],
 }
 
@@ -156,8 +181,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timezone", default="Asia/Shanghai", help="IANA timezone. Default: Asia/Shanghai.")
     parser.add_argument("--output-dir", default="output", help="Directory for Markdown and verification JSON.")
     parser.add_argument("--max-items-per-module", type=int, default=6)
-    parser.add_argument("--max-candidates-per-feed", type=int, default=2)
-    parser.add_argument("--max-total-candidates", type=int, default=24)
+    parser.add_argument("--max-candidates-per-feed", type=int, default=3)
+    parser.add_argument("--max-total-candidates", type=int, default=72)
     parser.add_argument("--timeout", type=int, default=15)
     parser.add_argument("--publish-feishu", action="store_true")
     parser.add_argument("--replace-feishu", action="store_true", help="Delete existing top-level Feishu document content before publishing.")
@@ -246,8 +271,110 @@ def parse_feed_datetime(value: str | None, tz: ZoneInfo) -> tuple[str | None, st
     try:
         parsed = email.utils.parsedate_to_datetime(value)
     except (TypeError, ValueError):
-        return value, None
+        compact_value = re.sub(r"\s+", " ", value.strip())
+        parsed = parse_iso_datetime(compact_value.replace(" ", "T", 1))
+        if parsed is None:
+            for date_format in ("%Y-%m-%d %H:%M:%S %z", "%Y/%m/%d %H:%M:%S %z"):
+                try:
+                    parsed = dt.datetime.strptime(compact_value, date_format)
+                    break
+                except ValueError:
+                    continue
+        if parsed is None:
+            return value, None
     return local_datetime_label(parsed, tz), local_date(parsed, tz)
+
+
+def first_text(item: ET.Element, names: list[str]) -> str:
+    for name in names:
+        value = item.findtext(name)
+        if value:
+            return clean_text(value)
+    return ""
+
+
+def item_link(item: ET.Element) -> str:
+    link = first_text(item, ["link", "{http://www.w3.org/2005/Atom}link"])
+    if link:
+        return link
+    atom_link = item.find("{http://www.w3.org/2005/Atom}link")
+    if atom_link is not None and atom_link.attrib.get("href"):
+        return clean_text(atom_link.attrib["href"])
+    return ""
+
+
+def item_source(item: ET.Element, fallback: str) -> str:
+    source_node = item.find("{http://www.google.com/schemas/sitemap-news/0.9}source")
+    if source_node is not None and source_node.text:
+        return clean_text(source_node.text)
+    source = first_text(item, ["source", "{http://www.w3.org/2005/Atom}source"])
+    return source or fallback
+
+
+def item_published_value(item: ET.Element) -> str | None:
+    return (
+        item.findtext("pubDate")
+        or item.findtext("published")
+        or item.findtext("updated")
+        or item.findtext("{http://www.w3.org/2005/Atom}published")
+        or item.findtext("{http://www.w3.org/2005/Atom}updated")
+    )
+
+
+def title_matches_direct_feed(module: str, title: str) -> bool:
+    if not has_keywords(title, AI_KEYWORDS):
+        return False
+    if module == "ai_hr":
+        return has_keywords(title, HR_KEYWORDS)
+    return True
+
+
+def add_feed_candidates(
+    root: ET.Element,
+    module: str,
+    feed_url: str,
+    source_name: str,
+    query: str,
+    tz: ZoneInfo,
+    max_per_feed: int,
+    max_total: int,
+    candidates: list[Candidate],
+    seen_urls: set[str],
+    direct_feed: bool = False,
+    target_day: dt.date | None = None,
+) -> bool:
+    added = 0
+    target_doc_date = fmt_doc_date(target_day) if target_day else None
+    items = root.findall(".//item") or root.findall("{http://www.w3.org/2005/Atom}entry")
+    for item in items:
+        if len(candidates) >= max_total:
+            return True
+        title = first_text(item, ["title", "{http://www.w3.org/2005/Atom}title"])
+        url = item_link(item)
+        if not title or not url or url in seen_urls:
+            continue
+        if direct_feed and not title_matches_direct_feed(module, title):
+            continue
+        published_at, published_date = parse_feed_datetime(item_published_value(item), tz)
+        if direct_feed and target_doc_date and published_date != target_doc_date:
+            continue
+        seen_urls.add(url)
+        candidates.append(
+            Candidate(
+                module=module,
+                title=title,
+                url=url,
+                source=item_source(item, source_name),
+                feed_published_at=published_at,
+                feed_published_local_date=published_date,
+                query=query,
+                feed=feed_url,
+            )
+        )
+        added += 1
+        if added >= max_per_feed:
+            break
+    return False
 
 
 def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total: int, day: dt.date | None = None) -> tuple[list[Candidate], list[RejectedItem]]:
@@ -270,35 +397,36 @@ def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total:
                     rejected.append(RejectedItem(module, query, feed_url, f"RSS fetch/parse failed: {exc}", query=query))
                     continue
 
-                for item in root.findall(".//item"):
-                    if len(candidates) >= max_total:
-                        return candidates, rejected
-                    title = clean_text(item.findtext("title") or "")
-                    url = clean_text(item.findtext("link") or "")
-                    if not title or not url or url in seen_urls:
-                        continue
-                    seen_urls.add(url)
-                    source = ""
-                    source_node = item.find("{http://www.google.com/schemas/sitemap-news/0.9}source")
-                    if source_node is not None and source_node.text:
-                        source = clean_text(source_node.text)
-                    if not source:
-                        source = clean_text(item.findtext("source") or "")
-                    published_at, published_date = parse_feed_datetime(item.findtext("pubDate"), tz)
-                    candidates.append(
-                        Candidate(
-                            module=module,
-                            title=title,
-                            url=url,
-                            source=source or "Unknown",
-                            feed_published_at=published_at,
-                            feed_published_local_date=published_date,
-                            query=query,
-                            feed=feed_url,
-                        )
-                    )
-                    if len([candidate for candidate in candidates if candidate.feed == feed_url]) >= max_per_feed:
-                        break
+                if add_feed_candidates(root, module, feed_url, "Google News", query, tz, max_per_feed, max_total, candidates, seen_urls):
+                    return candidates, rejected
+
+    for module, feeds in DIRECT_RSS_FEEDS.items():
+        for source_name, feed_url in feeds:
+            try:
+                status, _, body = request_url(feed_url, timeout)
+                if status != 200:
+                    rejected.append(RejectedItem(module, source_name, feed_url, f"RSS status {status}", source_name, "direct_rss"))
+                    continue
+                root = ET.fromstring(body)
+            except Exception as exc:  # noqa: BLE001 - recorded in verification report.
+                rejected.append(RejectedItem(module, source_name, feed_url, f"Direct RSS fetch/parse failed: {exc}", source_name, "direct_rss"))
+                continue
+
+            if add_feed_candidates(
+                root,
+                module,
+                feed_url,
+                source_name,
+                f"direct_rss:{source_name}",
+                tz,
+                max_per_feed,
+                max_total,
+                candidates,
+                seen_urls,
+                direct_feed=True,
+                target_day=day,
+            ):
+                return candidates, rejected
 
     return candidates, rejected
 
@@ -332,7 +460,20 @@ def parse_iso_datetime(value: str) -> dt.datetime | None:
         return None
 
 
-def extract_page_dates(markup: str, visible_text: str) -> list[dt.datetime]:
+def parse_candidate_dates(candidates: list[str]) -> list[dt.datetime]:
+    parsed: list[dt.datetime] = []
+    for candidate in candidates:
+        value = parse_iso_datetime(candidate)
+        if value is None:
+            try:
+                value = dt.datetime.strptime(candidate, "%B %d, %Y").replace(tzinfo=dt.timezone.utc)
+            except ValueError:
+                continue
+        parsed.append(value)
+    return parsed
+
+
+def extract_structured_page_dates(markup: str) -> list[dt.datetime]:
     candidates: list[str] = []
     patterns = [
         r'property=["\']article:published_time["\'][^>]+content=["\']([^"\']+)["\']',
@@ -344,7 +485,11 @@ def extract_page_dates(markup: str, visible_text: str) -> list[dt.datetime]:
     ]
     for pattern in patterns:
         candidates.extend(re.findall(pattern, markup, flags=re.IGNORECASE))
+    return parse_candidate_dates(candidates)
 
+
+def extract_page_dates(markup: str, visible_text: str) -> list[dt.datetime]:
+    candidates: list[str] = []
     text_patterns = [
         r"\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b",
         r"\b([A-Z][a-z]+ \d{1,2}, 20\d{2})\b",
@@ -354,17 +499,7 @@ def extract_page_dates(markup: str, visible_text: str) -> list[dt.datetime]:
         candidates.append(f"{int(year):04d}-{int(month):02d}-{int(day):02d}")
     for match in re.findall(text_patterns[1], visible_text[:3000]):
         candidates.append(match)
-
-    parsed: list[dt.datetime] = []
-    for candidate in candidates:
-        value = parse_iso_datetime(candidate)
-        if value is None:
-            try:
-                value = dt.datetime.strptime(candidate, "%B %d, %Y").replace(tzinfo=dt.timezone.utc)
-            except ValueError:
-                continue
-        parsed.append(value)
-    return parsed
+    return extract_structured_page_dates(markup) + parse_candidate_dates(candidates)
 
 
 def has_keywords(text: str, words: list[str]) -> bool:
@@ -483,16 +618,16 @@ def verify_candidates(
             rejected.append(RejectedItem(candidate.module, candidate.title, source_url, "Opened link lacks substantive article text", candidate.source, candidate.query))
             continue
 
-        page_dates = extract_page_dates(markup, visible_text)
-        matching_page_dates = [value for value in page_dates if local_date(value, tz) == doc_date]
-        if not matching_page_dates:
-            found = sorted({local_date(value, tz) for value in page_dates})[:5]
+        structured_page_dates = extract_structured_page_dates(markup)
+        matching_structured_dates = [value for value in structured_page_dates if local_date(value, tz) == doc_date]
+        if structured_page_dates and not matching_structured_dates:
+            found = sorted({local_date(value, tz) for value in structured_page_dates})[:5]
             rejected.append(
                 RejectedItem(
                     candidate.module,
                     candidate.title,
                     source_url,
-                    f"Page date evidence does not match {doc_date}; found {found or ['unknown']}",
+                    f"Structured page date contradicts {doc_date}; found {found or ['unknown']}",
                     candidate.source,
                     candidate.query,
                 )
@@ -507,7 +642,11 @@ def verify_candidates(
             rejected.append(RejectedItem(candidate.module, candidate.title, source_url, "AI+HR relevance not established", candidate.source, candidate.query))
             continue
 
-        page_date_label = local_datetime_label(matching_page_dates[0], tz)
+        page_date_label = (
+            local_datetime_label(matching_structured_dates[0], tz)
+            if matching_structured_dates
+            else "页面未提供可解析的结构化发布时间，已以RSS发布时间作为当日证据"
+        )
         note = (
             f"三步校验通过：抓取时间 {local_datetime_label(now, tz)}；RSS发布时间（北京时间）{candidate.feed_published_at}；"
             f"页面日期证据（北京时间）{page_date_label}；目标日期 {doc_date}。"

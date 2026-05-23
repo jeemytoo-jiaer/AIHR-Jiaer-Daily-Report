@@ -9,6 +9,8 @@ description: Create and publish a daily AI+HR intelligence brief into one persis
 
 Produce a same-day, source-backed daily brief for 嘉尔's HR, recruiter, and founder audience. The brief must never pad with stale news. If no same-day high-quality sources pass verification, write `当日无高质量信息源`.
 
+This is a standing daily requirement. Do not ask the user to restate the freshness, date, or Feishu update rules each day; enforce them from this skill and the scheduled workflow.
+
 ## Output Contract
 
 Use the target date in Asia/Shanghai. Publish into one existing Feishu document and prepend the daily section at the top. The daily section heading must be `YYYY.MM.DD`.
@@ -84,6 +86,8 @@ python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'
 ## Scheduling
 
 For GitHub Actions, use `.github/workflows/daily-ai-hr-brief.yml`. It runs at 08:00 Asia/Shanghai (`00:00 UTC`) and expects Feishu secrets to be configured in the GitHub repository. Each run prepends the new daily section to the same Feishu document.
+
+The scheduled run must search both overseas and domestic sources by default. Domestic coverage includes direct RSS feeds where available plus site-targeted searches for Chinese technology, business, AI, and HR technology media. Closed platforms may only be used when the article body, link, and date can be verified without login or manual screenshots.
 
 If a manually created Feishu document rejects app writes, run `.github/workflows/create-feishu-doc.yml` once with `FEISHU_FOLDER_TOKEN` configured. Use its printed `FEISHU_DOCUMENT_ID` for the daily workflow.
 
