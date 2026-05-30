@@ -23,6 +23,7 @@ import textwrap
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import warnings
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
@@ -36,6 +37,13 @@ try:
     from googlenewsdecoder import gnewsdecoder  # type: ignore
 except Exception:  # pragma: no cover - optional dependency.
     gnewsdecoder = None
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except Exception:  # pragma: no cover - optional poster dependency.
+    Image = None
+    ImageDraw = None
+    ImageFont = None
 
 
 MODULES = {
@@ -108,6 +116,22 @@ AI_KEYWORDS = [
     "大模型",
     "生成式",
 ]
+
+POSTER_SIZE = (1080, 1440)
+POSTER_REGULAR_FONTS = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
+    "/System/Library/Fonts/STHeiti Light.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+]
+POSTER_BOLD_FONTS = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.otf",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+]
+
+WEEKDAY_LABELS = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
 
 
 @dataclasses.dataclass
@@ -187,6 +211,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--publish-feishu", action="store_true")
     parser.add_argument("--replace-feishu", action="store_true", help="Delete existing top-level Feishu document content before publishing.")
     parser.add_argument("--allow-backfill", action="store_true", help="Allow fetch date to differ from target date.")
+    parser.add_argument("--skip-poster", action="store_true", help="Skip daily 1080x1440 poster PNG generation.")
     return parser.parse_args()
 
 
@@ -722,29 +747,255 @@ def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[R
     return "\n".join(lines).strip() + "\n"
 
 
+def poster_font(size: int, bold: bool = False) -> Any:
+    if ImageFont is None:
+        raise RuntimeError("Pillow is required to generate poster PNGs.")
+    for path in POSTER_BOLD_FONTS if bold else POSTER_REGULAR_FONTS:
+        if Path(path).exists():
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
+def text_width(draw: Any, text: str, font: Any) -> float:
+    return draw.textlength(text, font=font)
+
+
+def wrap_text(draw: Any, text: str, font: Any, max_width: int, max_lines: int) -> list[str]:
+    text = clean_text(text)
+    if not text:
+        return []
+    lines: list[str] = []
+    current = ""
+    for char in text:
+        trial = current + char
+        if text_width(draw, trial, font) <= max_width:
+            current = trial
+            continue
+        if current:
+            lines.append(current)
+        current = char
+        if len(lines) >= max_lines:
+            break
+    if current and len(lines) < max_lines:
+        lines.append(current)
+    if len(lines) == max_lines and text_width(draw, "".join(lines), font) < text_width(draw, text, font):
+        lines[-1] = lines[-1].rstrip("，。,. ") + "..."
+    return lines
+
+
+def draw_wrapped_text(
+    draw: Any,
+    xy: tuple[int, int],
+    text: str,
+    font: Any,
+    fill: str,
+    max_width: int,
+    max_lines: int,
+    line_gap: int = 10,
+) -> int:
+    x, y = xy
+    lines = wrap_text(draw, text, font, max_width, max_lines)
+    for line in lines:
+        draw.text((x, y), line, font=font, fill=fill)
+        bbox = draw.textbbox((x, y), line, font=font)
+        y = bbox[3] + line_gap
+    return y
+
+
+def module_items(accepted: list[AcceptedItem], module: str, limit: int) -> list[AcceptedItem]:
+    items = [item for item in accepted if item.module == module]
+    return items[:limit]
+
+
+def section_summary(accepted: list[AcceptedItem]) -> str:
+    ai_hr_count = len([item for item in accepted if item.module == "ai_hr"])
+    global_count = len([item for item in accepted if item.module == "global_ai"])
+    if not accepted:
+        return "今天没有通过校验的高质量信息源，宁缺毋滥。"
+    if ai_hr_count:
+        return f"今日通过校验 {len(accepted)} 条：AI+HR {ai_hr_count} 条，全球AI {global_count} 条。重点先看AI+HR对组织和招聘的影响。"
+    return f"今日通过校验 {len(accepted)} 条：全球AI {global_count} 条。可用于补充社群的AI趋势判断。"
+
+
+def poster_items(accepted: list[AcceptedItem], limit: int = 5) -> list[AcceptedItem]:
+    ai_hr_items = module_items(accepted, "ai_hr", 2)
+    global_items = module_items(accepted, "global_ai", max(0, limit - len(ai_hr_items)))
+    items = ai_hr_items + global_items
+    if len(items) < limit:
+        seen = {normalize_url(item.final_url or item.url) for item in items}
+        for item in accepted:
+            key = normalize_url(item.final_url or item.url)
+            if key in seen:
+                continue
+            items.append(item)
+            seen.add(key)
+            if len(items) >= limit:
+                break
+    return items[:limit]
+
+
+def draw_grid(draw: Any) -> None:
+    for x in range(34, POSTER_SIZE[0] - 33, 62):
+        draw.line((x, 34, x, POSTER_SIZE[1] - 34), fill="#EAF0EC", width=1)
+    for y in range(34, POSTER_SIZE[1] - 33, 62):
+        draw.line((34, y, POSTER_SIZE[0] - 34, y), fill="#EAF0EC", width=1)
+
+
+def draw_centered_text(draw: Any, box: tuple[int, int, int, int], text: str, font: Any, fill: str) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    x = box[0] + (box[2] - box[0] - width) / 2
+    y = box[1] + (box[3] - box[1] - height) / 2 - 2
+    draw.text((x, y), text, font=font, fill=fill)
+
+
+def draw_news_card(
+    draw: Any,
+    index: int,
+    item: AcceptedItem | None,
+    y: int,
+    accent: str,
+    fonts: dict[str, Any],
+) -> int:
+    left = 64
+    right = POSTER_SIZE[0] - 64
+    card_height = 116
+    draw.rounded_rectangle((left + 5, y + 6, right + 5, y + card_height + 6), radius=24, fill="#DEE8E1")
+    draw.rounded_rectangle((left, y, right, y + card_height), radius=24, fill="#FFFFFF", outline="#E2E9E5", width=1)
+    draw.rounded_rectangle((left, y, left + 8, y + card_height), radius=4, fill=accent)
+
+    number = f"{index:02d}"
+    draw.text((left + 44, y + 38), number, font=fonts["card_number"], fill=accent)
+
+    if item is None:
+        draw.text((left + 150, y + 35), "当日无高质量信息源", font=fonts["item"], fill="#172033")
+        draw.text((left + 150, y + 74), "今日宁缺毋滥，不补旧闻。", font=fonts["meta"], fill="#7C8B99")
+        return y + card_height + 22
+
+    module_label = "AI+HR" if item.module == "ai_hr" else "GLOBAL AI"
+    source_label = item.source if item.source and item.source != "Unknown" else "已校验"
+    meta = f"{module_label}   {source_label}   已校验"
+    draw.text((left + 150, y + 23), meta, font=fonts["meta"], fill=accent)
+    draw_wrapped_text(
+        draw,
+        (left + 150, y + 57),
+        item.title,
+        fonts["item"],
+        "#172033",
+        right - left - 184,
+        2,
+        line_gap=4,
+    )
+    return y + card_height + 22
+
+
+def render_poster(day: dt.date, accepted: list[AcceptedItem], output_path: Path) -> Path:
+    if Image is None or ImageDraw is None:
+        raise RuntimeError("Pillow is required to generate poster PNGs.")
+
+    image = Image.new("RGB", POSTER_SIZE, "#F7FAF8")
+    draw = ImageDraw.Draw(image)
+    fonts = {
+        "brand": poster_font(36, bold=True),
+        "brand_sub": poster_font(17),
+        "big_day": poster_font(142, bold=True),
+        "month": poster_font(32, bold=True),
+        "weekday": poster_font(25),
+        "headline": poster_font(61, bold=True),
+        "headline_small": poster_font(50, bold=True),
+        "subtitle": poster_font(25),
+        "card_number": poster_font(38, bold=True),
+        "item": poster_font(27, bold=True),
+        "meta": poster_font(19, bold=True),
+        "footer": poster_font(23),
+        "badge": poster_font(23, bold=True),
+    }
+
+    draw_grid(draw)
+    draw.rectangle((0, 0, POSTER_SIZE[0], 28), fill="#E9F7EF")
+
+    logo_box = (64, 58, 108, 102)
+    draw.rounded_rectangle(logo_box, radius=12, fill="#20C997")
+    draw_centered_text(draw, logo_box, "J", fonts["badge"], "#FFFFFF")
+    draw.text((124, 50), "Jiaer AIHR", font=fonts["brand"], fill="#0C172A")
+    draw.text((126, 92), "DAILY AI + HR BRIEF", font=fonts["brand_sub"], fill="#7E8EA0")
+    draw.rounded_rectangle((958, 46, 1032, 92), radius=23, fill="#D9E3DD")
+    draw_centered_text(draw, (958, 46, 1032, 92), "1/1", fonts["badge"], "#FFFFFF")
+
+    day_text = f"{day.day:02d}"
+    draw.rounded_rectangle((64, 150, 70, 260), radius=3, fill="#20C997")
+    draw.text((98, 132), day_text, font=fonts["big_day"], fill="#18B981")
+    draw.text((288, 171), day.strftime("%b %Y").upper(), font=fonts["month"], fill="#6B7A90")
+    draw.text((290, 216), WEEKDAY_LABELS[day.weekday()], font=fonts["weekday"], fill="#172033")
+
+    if accepted:
+        draw.text((64, 318), "今天，", font=fonts["headline"], fill="#0C172A")
+        draw.text((64, 388), "AI+HR又向前走了一步。", font=fonts["headline_small"], fill="#16A877")
+    else:
+        draw.text((64, 318), "今天，", font=fonts["headline"], fill="#0C172A")
+        draw.text((64, 388), "暂无高质量当日信源。", font=fonts["headline_small"], fill="#16A877")
+    card_accents = ["#20C997", "#10B981", "#86D36A", "#5DBB63", "#2A9D8F"]
+    selected_items = poster_items(accepted, 5)
+    y = 500
+    if selected_items:
+        for index, item in enumerate(selected_items, start=1):
+            y = draw_news_card(draw, index, item, y, card_accents[(index - 1) % len(card_accents)], fonts)
+    else:
+        for index in range(1, 4):
+            y = draw_news_card(draw, index, None, y, card_accents[(index - 1) % len(card_accents)], fonts)
+
+    footer_y = 1280
+    draw.line((64, footer_y, 1016, footer_y), fill="#DCE6E0", width=2)
+    cta = "详细内容点击微信群置顶链接查看～"
+    cta_bbox = draw.textbbox((0, 0), cta, font=fonts["footer"])
+    cta_x = (POSTER_SIZE[0] - (cta_bbox[2] - cta_bbox[0])) / 2
+    draw.text((cta_x, footer_y + 42), cta, font=fonts["footer"], fill="#16A877")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output_path, "PNG", optimize=True)
+    return output_path
+
+
 def render_combined_markdown(markdown_paths: list[Path]) -> str:
     sections = [path.read_text(encoding="utf-8").strip() for path in markdown_paths]
     return "\n\n".join(section for section in sections if section).strip() + "\n"
 
 
-def write_outputs(output_dir: Path, day: dt.date, accepted: list[AcceptedItem], rejected: list[RejectedItem], candidates: list[Candidate]) -> Path:
+def write_outputs(
+    output_dir: Path,
+    day: dt.date,
+    accepted: list[AcceptedItem],
+    rejected: list[RejectedItem],
+    candidates: list[Candidate],
+    generate_poster: bool = True,
+) -> tuple[Path, Path | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     doc_date = fmt_doc_date(day)
     markdown_path = output_dir / f"{doc_date}.md"
     report_path = output_dir / "verification_report.json"
+    poster_path: Path | None = None
+    poster_error: str | None = None
     markdown = render_markdown(day, accepted, rejected)
     markdown_path.write_text(markdown, encoding="utf-8")
+    if generate_poster:
+        try:
+            poster_path = render_poster(day, accepted, output_dir / f"{doc_date}-poster.png")
+        except Exception as exc:  # noqa: BLE001 - poster failure should not block text brief.
+            poster_error = str(exc)
     report = {
         "daily_section_date": doc_date,
         "generated_at": dt.datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(),
         "accepted_count": len(accepted),
         "rejected_count": len(rejected),
         "candidate_count": len(candidates),
+        "poster_path": str(poster_path) if poster_path else None,
+        "poster_error": poster_error,
         "accepted": [dataclasses.asdict(item) for item in accepted],
         "rejected": [dataclasses.asdict(item) for item in rejected],
     }
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    return markdown_path
+    return markdown_path, poster_path
 
 
 def feishu_request(
@@ -780,6 +1031,10 @@ def feishu_delete(base_url: str, path: str, token: str, payload: dict[str, Any],
     return feishu_request(base_url, path, token, payload, timeout, "DELETE")
 
 
+def feishu_patch(base_url: str, path: str, token: str, payload: dict[str, Any], timeout: int) -> dict[str, Any]:
+    return feishu_request(base_url, path, token, payload, timeout, "PATCH")
+
+
 def feishu_get(base_url: str, path: str, token: str, timeout: int) -> dict[str, Any]:
     req = urllib.request.Request(
         base_url.rstrip("/") + path,
@@ -799,6 +1054,68 @@ def feishu_get(base_url: str, path: str, token: str, timeout: int) -> dict[str, 
     if result.get("code") not in (0, None):
         raise RuntimeError(f"Feishu API error at {path}: {result}")
     return result
+
+
+def feishu_upload_media(
+    base_url: str,
+    token: str,
+    image_block_id: str,
+    image_path: Path,
+    timeout: int,
+    document_id: str | None = None,
+) -> str:
+    image_bytes = image_path.read_bytes()
+    boundary = f"----aihrposter{uuid.uuid4().hex}"
+    fields = {
+        "file_name": image_path.name,
+        "parent_type": "docx_image",
+        "parent_node": image_block_id,
+        "size": str(len(image_bytes)),
+    }
+    if document_id:
+        fields["extra"] = json.dumps({"drive_route_token": document_id}, ensure_ascii=False)
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                f"{value}\r\n"
+            ).encode("utf-8")
+        )
+    parts.append(
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{image_path.name}"\r\n'
+            "Content-Type: image/png\r\n\r\n"
+        ).encode("utf-8")
+    )
+    parts.append(image_bytes)
+    parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+    body = b"".join(parts)
+
+    path = "/open-apis/drive/v1/medias/upload_all"
+    req = urllib.request.Request(
+        base_url.rstrip("/") + path,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            response_body = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        response_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Feishu HTTP {exc.code} at {path}: {response_body}") from exc
+
+    result = json.loads(response_body)
+    if result.get("code") not in (0, None):
+        raise RuntimeError(f"Feishu API error at {path}: {result}")
+    file_token = result.get("data", {}).get("file_token")
+    return str(file_token or "")
 
 
 def extract_feishu_token(value: str) -> tuple[str, str]:
@@ -886,6 +1203,47 @@ def clear_feishu_document(base_url: str, document_id: str, root_block_id: str, t
         time.sleep(0.3)
 
 
+def delete_feishu_root_range(
+    base_url: str,
+    document_id: str,
+    root_block_id: str,
+    token: str,
+    timeout: int,
+    revision_id: int,
+    start_index: int,
+    end_index: int,
+) -> None:
+    query = urllib.parse.urlencode({"document_revision_id": revision_id})
+    feishu_delete(
+        base_url,
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children/batch_delete?{query}",
+        token,
+        {"start_index": start_index, "end_index": end_index},
+        timeout,
+    )
+
+
+def replace_feishu_image(
+    base_url: str,
+    document_id: str,
+    image_block_id: str,
+    token: str,
+    timeout: int,
+    revision_id: int,
+    file_token: str,
+) -> int:
+    query = urllib.parse.urlencode({"document_revision_id": revision_id})
+    result = feishu_patch(
+        base_url,
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{image_block_id}?{query}",
+        token,
+        {"replace_image": {"token": file_token}},
+        timeout,
+    )
+    next_revision_id = result.get("data", {}).get("document_revision_id")
+    return next_revision_id if isinstance(next_revision_id, int) else revision_id
+
+
 def get_feishu_tenant_access_token(base_url: str, app_id: str, app_secret: str, timeout: int) -> str:
     token_result = feishu_api(
         base_url,
@@ -950,7 +1308,73 @@ def get_feishu_write_token(base_url: str, app_id: str, app_secret: str, timeout:
     return get_feishu_tenant_access_token(base_url, app_id, app_secret, timeout), "tenant_access_token"
 
 
-def publish_feishu(markdown_path: Path, title: str, timeout: int, replace_existing: bool = False) -> str:
+def insert_feishu_poster(
+    base_url: str,
+    document_id: str,
+    root_block_id: str,
+    token: str,
+    timeout: int,
+    revision_id: int,
+    poster_path: Path,
+    index: int = 1,
+) -> int:
+    if not poster_path.exists():
+        raise RuntimeError(f"Poster path does not exist: {poster_path}")
+
+    query = urllib.parse.urlencode({"document_revision_id": revision_id})
+    result = feishu_api(
+        base_url,
+        f"/open-apis/docx/v1/documents/{document_id}/blocks/{root_block_id}/children?{query}",
+        token,
+        {"children": [{"block_type": 27, "image": {}}], "index": index},
+        timeout,
+    )
+    data = result.get("data", {})
+    children = data.get("children") or []
+    image_block_id = children[0].get("block_id") if children else None
+    next_revision_id = data.get("document_revision_id")
+    if not image_block_id or not isinstance(next_revision_id, int):
+        raise RuntimeError(f"Feishu image block response did not contain block_id/revision_id: {result}")
+
+    try:
+        file_token = feishu_upload_media(base_url, token, str(image_block_id), poster_path, timeout, document_id)
+        if file_token:
+            next_revision_id = replace_feishu_image(
+                base_url,
+                document_id,
+                str(image_block_id),
+                token,
+                timeout,
+                next_revision_id,
+                file_token,
+            )
+    except Exception:
+        try:
+            delete_feishu_root_range(
+                base_url,
+                document_id,
+                root_block_id,
+                token,
+                timeout,
+                next_revision_id,
+                index,
+                index + 1,
+            )
+        except Exception as cleanup_exc:  # noqa: BLE001 - log best-effort cleanup only.
+            print(f"::warning::Failed to remove empty Feishu poster block: {cleanup_exc}")
+        raise
+
+    print(f"Feishu poster inserted: {poster_path} ({file_token or 'uploaded'})")
+    return get_feishu_document_revision_id(base_url, document_id, token, timeout)
+
+
+def publish_feishu(
+    markdown_path: Path,
+    title: str,
+    timeout: int,
+    replace_existing: bool = False,
+    poster_path: Path | None = None,
+) -> str:
     app_id = os.environ.get("FEISHU_APP_ID")
     app_secret = os.environ.get("FEISHU_APP_SECRET")
     raw_document_id = os.environ.get("FEISHU_DOCUMENT_ID")
@@ -983,6 +1407,12 @@ def publish_feishu(markdown_path: Path, title: str, timeout: int, replace_existi
             revision_id = next_revision_id
         else:
             revision_id = get_feishu_document_revision_id(base_url, document_id, token, timeout)
+
+    if poster_path:
+        try:
+            revision_id = insert_feishu_poster(base_url, document_id, root_block_id, token, timeout, revision_id, poster_path)
+        except Exception as exc:  # noqa: BLE001 - keep the text brief live even if poster delivery needs extra scope.
+            print(f"::warning::Feishu poster insert failed: {exc}")
     print(f"Feishu token source: {token_source}")
     if raw_document_id.startswith("http"):
         return raw_document_id
@@ -1054,6 +1484,7 @@ def main() -> int:
     days = target_dates(args, tz)
     output_dir = Path(args.output_dir)
     markdown_paths: list[Path] = []
+    poster_paths: list[Path] = []
     total_accepted = 0
     total_rejected = 0
 
@@ -1068,13 +1499,24 @@ def main() -> int:
             args.allow_backfill or len(days) > 1,
         )
         rejected = rss_rejections + verification_rejections
-        markdown_path = write_outputs(output_dir / fmt_doc_date(day) if len(days) > 1 else output_dir, day, accepted, rejected, candidates)
+        markdown_path, poster_path = write_outputs(
+            output_dir / fmt_doc_date(day) if len(days) > 1 else output_dir,
+            day,
+            accepted,
+            rejected,
+            candidates,
+            generate_poster=not args.skip_poster,
+        )
         markdown_paths.append(markdown_path)
+        if poster_path:
+            poster_paths.append(poster_path)
         total_accepted += len(accepted)
         total_rejected += len(rejected)
 
         print(f"Daily section: {fmt_doc_date(day)}")
         print(f"Markdown: {markdown_path}")
+        if poster_path:
+            print(f"Poster: {poster_path}")
         print(f"Accepted: {len(accepted)}")
         print(f"Rejected: {len(rejected)}")
 
@@ -1086,7 +1528,8 @@ def main() -> int:
         print(f"Combined Markdown: {publish_path}")
 
     if args.publish_feishu:
-        url = publish_feishu(publish_path, fmt_doc_date(days[0]), args.timeout, args.replace_feishu)
+        feishu_poster_path = poster_paths[0] if len(days) == 1 and poster_paths else None
+        url = publish_feishu(publish_path, fmt_doc_date(days[0]), args.timeout, args.replace_feishu, feishu_poster_path)
         print(f"Feishu document: {url}")
 
     if total_accepted == 0:
@@ -1098,6 +1541,7 @@ def main() -> int:
         ).strip())
     print(f"Total accepted: {total_accepted}")
     print(f"Total rejected: {total_rejected}")
+    print(f"Total posters: {len(poster_paths)}")
     return 0
 
 

@@ -11,6 +11,8 @@ Produce a same-day, source-backed daily brief for 嘉尔's HR, recruiter, and fo
 
 This is a standing daily requirement. Do not ask the user to restate the freshness, date, or Feishu update rules each day; enforce them from this skill and the scheduled workflow.
 
+In addition to the Feishu text brief, generate one daily poster image for easy sharing in Xiaohongshu, Feishu groups, and WeChat groups. For single-day scheduled runs, insert the poster into the same Feishu daily section after the date heading. Always keep the PNG as a GitHub Actions artifact as a fallback.
+
 ## Output Contract
 
 Use the target date in Asia/Shanghai. Publish into one existing Feishu document and prepend the daily section at the top. The daily section heading must be `YYYY.MM.DD`.
@@ -27,6 +29,20 @@ Each accepted item must include:
 - Original URL
 
 Do not include backend audit details in the Feishu document body, including source-only rows, raw publish timestamps, verification notes, self-check checklists, or collection statistics. Keep those details only in `verification_report.json`.
+
+## Poster Contract
+
+Generate a 1080x1440 PNG poster for every daily section unless `--skip-poster` is explicitly set. Save it next to the Markdown output as `YYYY.MM.DD-poster.png`.
+
+Poster layout:
+
+1. Light grid background with a green-first palette, `Jiaer AIHR` brand mark, and `DAILY AI + HR BRIEF` subtitle.
+2. Large day number, month/year, and weekday as the first visual focus.
+3. Main headline: `今天，AI+HR又向前走了一步。`, or `今天，暂无高质量当日信源。` when no item passes verification.
+4. Five rounded news cards in reverse-priority order, mixing AI+HR and global AI items while prioritizing AI+HR when available.
+5. Footer call-to-action: `详细内容点击微信群置顶链接查看～`.
+
+Poster body must not include raw timestamps, backend verification notes, collection statistics, or stale filler. If a module has no accepted item, write `当日无高质量...信息源` for that module.
 
 ## Mandatory Quality Gate
 
@@ -89,8 +105,12 @@ For GitHub Actions, use `.github/workflows/daily-ai-hr-brief.yml`. It runs at 08
 
 The scheduled run must search both overseas and domestic sources by default. Domestic coverage includes direct RSS feeds where available plus site-targeted searches for Chinese technology, business, AI, and HR technology media. Closed platforms may only be used when the article body, link, and date can be verified without login or manual screenshots.
 
+The scheduled run inserts the daily poster into the Feishu document for single-day runs and also uploads the PNG as a GitHub Actions artifact together with the Markdown and verification report.
+
 If a manually created Feishu document rejects app writes, run `.github/workflows/create-feishu-doc.yml` once with `FEISHU_FOLDER_TOKEN` configured. Use its printed `FEISHU_DOCUMENT_ID` for the daily workflow.
 
 If Feishu also rejects app-created documents or folders, use personal OAuth instead. Add `FEISHU_REFRESH_TOKEN` and `GH_SECRET_PAT` as GitHub Actions secrets so the scheduled workflow can write as the document owner and rotate the Feishu refresh token after every run.
 
 For personal OAuth, the Feishu app must open the Docx permissions as user-identity scopes, not only app-identity scopes. The OAuth helper requests `docx:document docx:document:write_only` by default.
+
+To insert posters into Feishu, the Feishu app also needs `docs:document.media:upload` for adding images/attachments to documents, and the OAuth refresh token must be regenerated after the permission is published. If this scope is missing, the workflow must still publish the text brief and keep the poster PNG in the GitHub Actions artifact.

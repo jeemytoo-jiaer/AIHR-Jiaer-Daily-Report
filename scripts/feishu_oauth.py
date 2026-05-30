@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 
 
-DEFAULT_DOCX_SCOPES = "docx:document docx:document:write_only"
+DEFAULT_DOCX_SCOPES = "docx:document docx:document:write_only docs:document.media:upload"
 
 
 def feishu_post(base_url: str, path: str, token: str | None, payload: dict, timeout: int = 20) -> dict:

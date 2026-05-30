@@ -47,10 +47,10 @@ The script resolves Wiki tokens to the underlying Docx `obj_token` through the W
 
 Use this path when Feishu returns `1770032 forbidden` while inserting document blocks, or `1770040 no folder permission` while creating a document. Those errors mean the app identity cannot edit the personal cloud document/folder. OAuth lets the workflow write as the document owner.
 
-1. In the Feishu developer console, add user-identity permissions for Docx document read/write, especially `docx:document` or `docx:document:write_only`, then publish the app version.
+1. In the Feishu developer console, add user-identity permissions for Docx document read/write and poster image upload: `docx:document`, `docx:document:write_only`, and `docs:document.media:upload`, then publish the app version.
 2. Add a redirect URL for the app. For a manual setup, a placeholder you control is enough, for example `https://example.com/feishu-oauth-callback`.
 3. Set local environment variables `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, and `FEISHU_REDIRECT_URI`.
-4. Run `python3 scripts/feishu_oauth.py auth-url`, open the printed URL, approve access, and copy the redirected URL. The helper requests `docx:document docx:document:write_only` by default.
+4. Run `python3 scripts/feishu_oauth.py auth-url`, open the printed URL, approve access, and copy the redirected URL. The helper requests `docx:document docx:document:write_only docs:document.media:upload` by default.
 5. Run `python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'`.
 6. Save the printed value as GitHub Actions secret `FEISHU_REFRESH_TOKEN`.
 7. Add GitHub Actions secret `GH_SECRET_PAT`, using a GitHub token that can update repository Actions secrets.
@@ -70,11 +70,12 @@ With personal OAuth, the script uses:
 1. `POST /open-apis/auth/v3/app_access_token/internal` to get an app token for OAuth refresh.
 2. `POST /open-apis/authen/v1/refresh_access_token` to exchange `FEISHU_REFRESH_TOKEN` for a user access token and a rotated refresh token.
 3. `POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children` with the user access token.
+4. For single-day poster delivery, create an image block, upload the generated PNG through `POST /open-apis/drive/v1/medias/upload_all`, and replace the image block with the uploaded image token.
 
-Feishu permissions vary by tenant. If publishing fails while resolving a Wiki URL, confirm that the app has Wiki read scope, such as `wiki:wiki:readonly`, and that the app or bot has read access to the target Wiki space/page. If publishing fails while inserting blocks, confirm that the app has Docx read/write scopes and permission to edit the target document.
+Feishu permissions vary by tenant. If publishing fails while resolving a Wiki URL, confirm that the app has Wiki read scope, such as `wiki:wiki:readonly`, and that the app or bot has read access to the target Wiki space/page. If publishing fails while inserting blocks, confirm that the app has Docx read/write scopes and permission to edit the target document. If only poster insertion fails, confirm `docs:document.media:upload` is enabled and the OAuth refresh token was regenerated after publishing that permission.
 
 ## Operational Notes
 
 Use GitHub repository secrets for credentials. Never commit app secrets, tenant tokens, or generated logs containing credentials.
 
-If the publish step fails, keep the generated Markdown and verification report as artifacts so the brief can still be reviewed manually.
+If the publish step fails, keep the generated Markdown, poster PNG, and verification report as artifacts so the brief can still be reviewed manually. If only poster insertion fails, the text brief should remain published and the PNG artifact should be used as the fallback.
