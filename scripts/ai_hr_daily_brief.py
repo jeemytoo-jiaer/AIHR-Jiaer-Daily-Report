@@ -807,16 +807,6 @@ def module_items(accepted: list[AcceptedItem], module: str, limit: int) -> list[
     return items[:limit]
 
 
-def section_summary(accepted: list[AcceptedItem]) -> str:
-    ai_hr_count = len([item for item in accepted if item.module == "ai_hr"])
-    global_count = len([item for item in accepted if item.module == "global_ai"])
-    if not accepted:
-        return "今天没有通过校验的高质量信息源，宁缺毋滥。"
-    if ai_hr_count:
-        return f"今日通过校验 {len(accepted)} 条：AI+HR {ai_hr_count} 条，全球AI {global_count} 条。重点先看AI+HR对组织和招聘的影响。"
-    return f"今日通过校验 {len(accepted)} 条：全球AI {global_count} 条。可用于补充社群的AI趋势判断。"
-
-
 def poster_items(accepted: list[AcceptedItem], limit: int = 5) -> list[AcceptedItem]:
     ai_hr_items = module_items(accepted, "ai_hr", 2)
     global_items = module_items(accepted, "global_ai", max(0, limit - len(ai_hr_items)))
