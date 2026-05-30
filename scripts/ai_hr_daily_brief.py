@@ -55,10 +55,16 @@ QUERIES = {
     "ai_hr": [
         '("AI HR" OR "AI recruiting" OR "AI hiring")',
         '("talent acquisition AI" OR "HR tech AI" OR "workforce AI")',
+        '("employee experience AI" OR "people analytics AI" OR "workforce planning AI")',
+        '("AI interview" OR "AI resume screening" OR "AI onboarding" OR "AI performance management")',
+        '("agentic AI HR" OR "AI agent HR" OR "enterprise AI HR")',
         '("人力资源 AI" OR "招聘 AI" OR "猎头 AI")',
         '("AI员工" OR "AI面试" OR "AI简历筛选" OR "AI招聘助手")',
+        '("AI绩效" OR "AI员工体验" OR "AI人才管理" OR "AI组织效率")',
+        '("数字员工" OR "AI人事" OR "AI招聘系统" OR "AI人才盘点")',
         '(site:36kr.com OR site:tmtpost.com OR site:infoq.cn) ("AI HR" OR "AI招聘" OR "人力资源 AI")',
-        '(site:hroot.com OR site:hrtechchina.com OR site:mokahr.com) ("AI" OR "人工智能")',
+        '(site:hroot.com OR site:hrtechchina.com OR site:mokahr.com OR site:beisen.com) ("AI" OR "人工智能" OR "智能体")',
+        '(site:hrtechseries.com OR site:hrexecutive.com OR site:joshbersin.com) ("AI" OR "artificial intelligence" OR "agent")',
     ],
     "global_ai": [
         '("artificial intelligence" OR "generative AI")',
@@ -75,6 +81,10 @@ DIRECT_RSS_FEEDS = {
         ("36氪", "https://36kr.com/feed"),
         ("钛媒体", "https://www.tmtpost.com/rss.xml"),
         ("InfoQ中文", "https://www.infoq.cn/feed"),
+        ("HRTech Series", "https://hrtechseries.com/feed/"),
+        ("HR Executive", "https://hrexecutive.com/feed/"),
+        ("Josh Bersin", "https://joshbersin.com/feed/"),
+        ("HRTech Weekly", "https://hrtechweekly.com/feed/"),
     ],
     "global_ai": [
         ("36氪", "https://36kr.com/feed"),
@@ -100,11 +110,45 @@ HR_KEYWORDS = [
     "talent",
     "workforce",
     "employee",
+    "ats",
+    "hcm",
+    "hris",
+    "people analytics",
+    "employee experience",
+    "workforce planning",
+    "performance management",
+    "onboarding",
+    "workday",
+    "successfactors",
+    "dayforce",
+    "greenhouse",
+    "lever",
     "人力",
     "招聘",
     "猎头",
     "人才",
     "员工",
+    "人事",
+    "绩效",
+    "薪酬",
+    "组织",
+    "用工",
+    "人效",
+    "员工体验",
+    "人才管理",
+    "招聘系统",
+    "候选人",
+    "面试",
+    "简历",
+    "入职",
+    "背调",
+    "培训",
+    "学习发展",
+    "数字员工",
+    "飞书人事",
+    "北森",
+    "Moka",
+    "肯耐珂萨",
 ]
 
 AI_KEYWORDS = [
@@ -115,6 +159,34 @@ AI_KEYWORDS = [
     "人工智能",
     "大模型",
     "生成式",
+]
+
+HR_FOCUSED_SOURCE_HINTS = [
+    "hroot",
+    "hrtech",
+    "hr tech",
+    "hr executive",
+    "hrexecutive",
+    "josh bersin",
+    "bersin",
+    "moka",
+    "mokahr",
+    "beisen",
+    "北森",
+    "肯耐珂萨",
+]
+
+POSTER_THEME_RULES = [
+    ("AI招聘", ["ai招聘", "招聘", "recruit", "hiring", "talent acquisition", "ats", "候选人", "面试", "简历", "jd"]),
+    ("人才管理", ["人才管理", "talent management", "绩效", "performance", "继任", "succession", "学习发展", "培训"]),
+    ("员工体验", ["员工体验", "employee experience", "onboarding", "入职", "员工服务", "员工问答"]),
+    ("组织效率", ["组织", "效率", "协作", "办公", "workflow", "productivity", "knowledge management", "知识管理"]),
+    ("智能体", ["agent", "agents", "agentic", "智能体", "数字员工", "ai员工"]),
+    ("企业AI", ["enterprise", "企业", "business", "saas", "hcm", "hris", "workday", "successfactors", "moka", "北森"]),
+    ("AI治理", ["regulation", "governance", "监管", "治理", "合规", "风险", "安全", "transparency", "透明"]),
+    ("大模型", ["大模型", "model", "openai", "anthropic", "deepmind", "deepseek", "qwen", "gemini", "claude"]),
+    ("开源模型", ["开源", "open-source", "open source", "github", "hugging face"]),
+    ("资本动态", ["融资", "估值", "revenue", "ipo", "acquire", "funding", "投资", "并购"]),
 ]
 
 POSTER_SIZE = (1080, 1440)
@@ -346,11 +418,16 @@ def item_published_value(item: ET.Element) -> str | None:
     )
 
 
-def title_matches_direct_feed(module: str, title: str) -> bool:
+def is_hr_focused_source(*values: str) -> bool:
+    haystack = " ".join(value or "" for value in values).lower()
+    return any(hint.lower() in haystack for hint in HR_FOCUSED_SOURCE_HINTS)
+
+
+def title_matches_direct_feed(module: str, title: str, source_name: str = "", feed_url: str = "") -> bool:
     if not has_keywords(title, AI_KEYWORDS):
         return False
     if module == "ai_hr":
-        return has_keywords(title, HR_KEYWORDS)
+        return has_keywords(title, HR_KEYWORDS) or is_hr_focused_source(source_name, feed_url)
     return True
 
 
@@ -378,7 +455,7 @@ def add_feed_candidates(
         url = item_link(item)
         if not title or not url or url in seen_urls:
             continue
-        if direct_feed and not title_matches_direct_feed(module, title):
+        if direct_feed and not title_matches_direct_feed(module, title, source_name, feed_url):
             continue
         published_at, published_date = parse_feed_datetime(item_published_value(item), tz)
         if direct_feed and target_doc_date and published_date != target_doc_date:
@@ -407,6 +484,35 @@ def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total:
     rejected: list[RejectedItem] = []
     seen_urls: set[str] = set()
 
+    # AI+HR is the core product promise, so vertical HR feeds get the first slots
+    # before broader Google News and general AI feeds can fill the candidate pool.
+    for source_name, feed_url in DIRECT_RSS_FEEDS.get("ai_hr", []):
+        try:
+            status, _, body = request_url(feed_url, timeout)
+            if status != 200:
+                rejected.append(RejectedItem("ai_hr", source_name, feed_url, f"RSS status {status}", source_name, "direct_rss"))
+                continue
+            root = ET.fromstring(body)
+        except Exception as exc:  # noqa: BLE001 - recorded in verification report.
+            rejected.append(RejectedItem("ai_hr", source_name, feed_url, f"Direct RSS fetch/parse failed: {exc}", source_name, "direct_rss"))
+            continue
+
+        if add_feed_candidates(
+            root,
+            "ai_hr",
+            feed_url,
+            source_name,
+            f"direct_rss:{source_name}",
+            tz,
+            max_per_feed + 2 if is_hr_focused_source(source_name, feed_url) else max_per_feed,
+            max_total,
+            candidates,
+            seen_urls,
+            direct_feed=True,
+            target_day=day,
+        ):
+            return candidates, rejected
+
     for module, queries in QUERIES.items():
         for query in queries:
             langs = ["zh", "en"] if module == "ai_hr" else ["en", "zh"]
@@ -427,6 +533,8 @@ def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total:
 
     for module, feeds in DIRECT_RSS_FEEDS.items():
         for source_name, feed_url in feeds:
+            if module == "ai_hr":
+                continue
             try:
                 status, _, body = request_url(feed_url, timeout)
                 if status != 200:
@@ -545,10 +653,17 @@ def keyword_hit_count(text: str, words: list[str]) -> int:
     return hits
 
 
-def ai_hr_relevance_established(title: str, text: str) -> bool:
+def ai_hr_relevance_established(title: str, text: str, source: str = "", url: str = "", query: str = "") -> bool:
     title_hits = keyword_hit_count(title, HR_KEYWORDS)
-    body_hits = keyword_hit_count(text[:1200], HR_KEYWORDS)
-    return title_hits >= 1 and body_hits >= 1
+    body_hits = keyword_hit_count(text[:2500], HR_KEYWORDS)
+    source_focused = is_hr_focused_source(source, url, query)
+    if title_hits >= 1 and body_hits >= 1:
+        return True
+    if source_focused and (title_hits >= 1 or body_hits >= 1):
+        return True
+    if source_focused and body_hits >= 2:
+        return True
+    return False
 
 
 def summarize(title: str, text: str) -> str:
@@ -560,22 +675,25 @@ def summarize(title: str, text: str) -> str:
     return clean_text(title)[:220]
 
 
-def relevance_note(module: str, title: str, text: str) -> str:
+def relevance_note(module: str, title: str, text: str, source: str = "", url: str = "", query: str = "") -> str:
     combined = f"{title} {text[:1200]}"
     if module == "ai_hr":
-        if has_keywords(combined, HR_KEYWORDS):
+        if has_keywords(combined, HR_KEYWORDS) or is_hr_focused_source(source, url, query):
             return "与招聘、人力资源、人才管理或组织效率直接相关，适合HR、猎头和企业主快速判断业务影响。"
         return "涉及AI对企业经营和劳动力市场的影响，但HR相关性较弱。"
     return "属于全球AI产品、监管、模型、资本或产业动态，适合补充社群的宏观AI判断。"
 
 
-def score_item(module: str, title: str, text: str, source: str) -> int:
+def score_item(module: str, title: str, text: str, source: str, url: str = "", query: str = "") -> int:
     combined = f"{title} {text[:2000]}".lower()
     score = 0
     if has_keywords(combined, AI_KEYWORDS):
         score += 3
-    if module == "ai_hr" and has_keywords(combined, HR_KEYWORDS):
-        score += 5
+    if module == "ai_hr":
+        score += min(keyword_hit_count(title, HR_KEYWORDS) * 3, 9)
+        score += min(keyword_hit_count(text[:2000], HR_KEYWORDS) * 2, 8)
+        if is_hr_focused_source(source, url, query):
+            score += 8
     if source and source.lower() not in {"unknown", "google news"}:
         score += 2
     if any(name in combined for name in ["openai", "anthropic", "google", "microsoft", "nvidia"]):
@@ -663,7 +781,13 @@ def verify_candidates(
         if not has_keywords(combined, AI_KEYWORDS):
             rejected.append(RejectedItem(candidate.module, candidate.title, source_url, "AI relevance not established", candidate.source, candidate.query))
             continue
-        if candidate.module == "ai_hr" and not ai_hr_relevance_established(candidate.title, visible_text):
+        if candidate.module == "ai_hr" and not ai_hr_relevance_established(
+            candidate.title,
+            visible_text,
+            candidate.source,
+            source_url,
+            candidate.query,
+        ):
             rejected.append(RejectedItem(candidate.module, candidate.title, source_url, "AI+HR relevance not established", candidate.source, candidate.query))
             continue
 
@@ -686,10 +810,10 @@ def verify_candidates(
                 published_at=candidate.feed_published_at or page_date_label,
                 published_local_date=doc_date,
                 summary=summarize(candidate.title, visible_text),
-                relevance=relevance_note(candidate.module, candidate.title, visible_text),
+                relevance=relevance_note(candidate.module, candidate.title, visible_text, candidate.source, source_url, candidate.query),
                 fetched_at=now.isoformat(),
                 verification_note=note,
-                score=score_item(candidate.module, candidate.title, visible_text, candidate.source),
+                score=score_item(candidate.module, candidate.title, visible_text, candidate.source, source_url, candidate.query),
             )
         )
 
@@ -779,7 +903,10 @@ def wrap_text(draw: Any, text: str, font: Any, max_width: int, max_lines: int) -
     if current and len(lines) < max_lines:
         lines.append(current)
     if len(lines) == max_lines and text_width(draw, "".join(lines), font) < text_width(draw, text, font):
-        lines[-1] = lines[-1].rstrip("，。,. ") + "..."
+        line = lines[-1].rstrip("，。,. ")
+        while line and text_width(draw, line + "...", font) > max_width:
+            line = line[:-1].rstrip()
+        lines[-1] = (line or lines[-1][:1]) + "..."
     return lines
 
 
@@ -807,8 +934,8 @@ def module_items(accepted: list[AcceptedItem], module: str, limit: int) -> list[
     return items[:limit]
 
 
-def poster_items(accepted: list[AcceptedItem], limit: int = 5) -> list[AcceptedItem]:
-    ai_hr_items = module_items(accepted, "ai_hr", 2)
+def poster_items(accepted: list[AcceptedItem], limit: int = 6) -> list[AcceptedItem]:
+    ai_hr_items = module_items(accepted, "ai_hr", limit)
     global_items = module_items(accepted, "global_ai", max(0, limit - len(ai_hr_items)))
     items = ai_hr_items + global_items
     if len(items) < limit:
@@ -822,6 +949,36 @@ def poster_items(accepted: list[AcceptedItem], limit: int = 5) -> list[AcceptedI
             if len(items) >= limit:
                 break
     return items[:limit]
+
+
+def poster_theme_terms(accepted: list[AcceptedItem], limit: int = 3) -> list[str]:
+    focus_items = [item for item in accepted if item.module == "ai_hr"] or accepted
+    scores: dict[str, int] = {}
+    for item in focus_items:
+        text = f"{item.title} {item.summary} {item.source}".lower()
+        for label, needles in POSTER_THEME_RULES:
+            score = 0
+            for needle in needles:
+                if needle.lower() in text:
+                    score += 1
+            if score:
+                if item.module == "ai_hr":
+                    score += 1
+                scores[label] = scores.get(label, 0) + score
+    terms = [label for label, _ in sorted(scores.items(), key=lambda pair: (-pair[1], pair[0]))]
+    if not terms and accepted:
+        return ["企业AI", "智能体", "组织效率"][:limit]
+    return terms[:limit]
+
+
+def poster_headline(accepted: list[AcceptedItem]) -> tuple[str, str]:
+    ai_hr_count = len([item for item in accepted if item.module == "ai_hr"])
+    terms = poster_theme_terms(accepted)
+    if ai_hr_count:
+        return "今日AI+HR关键词", " × ".join(terms or ["AI招聘", "组织效率"])
+    if accepted:
+        return "今日AI速递关键词", " × ".join(terms or ["企业AI", "大模型"])
+    return "今天，", "暂无高质量当日信源。"
 
 
 def draw_grid(draw: Any) -> None:
@@ -847,37 +1004,39 @@ def draw_news_card(
     y: int,
     accent: str,
     fonts: dict[str, Any],
+    card_height: int,
+    card_gap: int,
 ) -> int:
     left = 64
     right = POSTER_SIZE[0] - 64
-    card_height = 116
-    draw.rounded_rectangle((left + 5, y + 6, right + 5, y + card_height + 6), radius=24, fill="#DEE8E1")
-    draw.rounded_rectangle((left, y, right, y + card_height), radius=24, fill="#FFFFFF", outline="#E2E9E5", width=1)
+    draw.rounded_rectangle((left + 5, y + 6, right + 5, y + card_height + 6), radius=20, fill="#DEE8E1")
+    draw.rounded_rectangle((left, y, right, y + card_height), radius=20, fill="#FFFFFF", outline="#E2E9E5", width=1)
     draw.rounded_rectangle((left, y, left + 8, y + card_height), radius=4, fill=accent)
 
     number = f"{index:02d}"
-    draw.text((left + 44, y + 38), number, font=fonts["card_number"], fill=accent)
+    number_bbox = draw.textbbox((0, 0), number, font=fonts["card_number"])
+    number_y = y + (card_height - (number_bbox[3] - number_bbox[1])) / 2 - 4
+    draw.text((left + 44, number_y), number, font=fonts["card_number"], fill=accent)
 
     if item is None:
-        draw.text((left + 150, y + 35), "当日无高质量信息源", font=fonts["item"], fill="#172033")
-        draw.text((left + 150, y + 74), "今日宁缺毋滥，不补旧闻。", font=fonts["meta"], fill="#7C8B99")
-        return y + card_height + 22
+        draw.text((left + 150, y + 34), "当日无高质量信息源", font=fonts["item"], fill="#172033")
+        return y + card_height + card_gap
 
     module_label = "AI+HR" if item.module == "ai_hr" else "GLOBAL AI"
     source_label = item.source if item.source and item.source != "Unknown" else "已校验"
     meta = f"{module_label}   {source_label}   已校验"
-    draw.text((left + 150, y + 23), meta, font=fonts["meta"], fill=accent)
+    draw.text((left + 150, y + 20), meta, font=fonts["meta"], fill=accent)
     draw_wrapped_text(
         draw,
-        (left + 150, y + 57),
+        (left + 150, y + 52),
         item.title,
         fonts["item"],
         "#172033",
-        right - left - 184,
+        right - left - 204,
         2,
-        line_gap=4,
+        line_gap=2,
     )
-    return y + card_height + 22
+    return y + card_height + card_gap
 
 
 def render_poster(day: dt.date, accepted: list[AcceptedItem], output_path: Path) -> Path:
@@ -886,18 +1045,21 @@ def render_poster(day: dt.date, accepted: list[AcceptedItem], output_path: Path)
 
     image = Image.new("RGB", POSTER_SIZE, "#F7FAF8")
     draw = ImageDraw.Draw(image)
+    selected_items = poster_items(accepted, 6)
+    display_count = len(selected_items) if selected_items else 3
+    compact = display_count >= 6
     fonts = {
         "brand": poster_font(36, bold=True),
         "brand_sub": poster_font(17),
         "big_day": poster_font(142, bold=True),
         "month": poster_font(32, bold=True),
         "weekday": poster_font(25),
-        "headline": poster_font(61, bold=True),
-        "headline_small": poster_font(50, bold=True),
+        "headline": poster_font(52, bold=True),
+        "headline_small": poster_font(45 if compact else 48, bold=True),
         "subtitle": poster_font(25),
-        "card_number": poster_font(38, bold=True),
-        "item": poster_font(27, bold=True),
-        "meta": poster_font(19, bold=True),
+        "card_number": poster_font(34 if compact else 38, bold=True),
+        "item": poster_font(23 if compact else 25, bold=True),
+        "meta": poster_font(17 if compact else 18, bold=True),
         "footer": poster_font(23),
         "badge": poster_font(23, bold=True),
     }
@@ -919,21 +1081,46 @@ def render_poster(day: dt.date, accepted: list[AcceptedItem], output_path: Path)
     draw.text((288, 171), day.strftime("%b %Y").upper(), font=fonts["month"], fill="#6B7A90")
     draw.text((290, 216), WEEKDAY_LABELS[day.weekday()], font=fonts["weekday"], fill="#172033")
 
-    if accepted:
-        draw.text((64, 318), "今天，", font=fonts["headline"], fill="#0C172A")
-        draw.text((64, 388), "AI+HR又向前走了一步。", font=fonts["headline_small"], fill="#16A877")
-    else:
-        draw.text((64, 318), "今天，", font=fonts["headline"], fill="#0C172A")
-        draw.text((64, 388), "暂无高质量当日信源。", font=fonts["headline_small"], fill="#16A877")
+    headline_prefix, headline_terms = poster_headline(accepted)
+    draw.text((64, 318), headline_prefix, font=fonts["headline"], fill="#0C172A")
+    draw_wrapped_text(
+        draw,
+        (64, 388),
+        headline_terms,
+        fonts["headline_small"],
+        "#16A877",
+        930,
+        2,
+        line_gap=2,
+    )
     card_accents = ["#20C997", "#10B981", "#86D36A", "#5DBB63", "#2A9D8F"]
-    selected_items = poster_items(accepted, 5)
-    y = 500
+    card_gap = 12 if compact else 16
+    card_height = 106 if compact else 116
+    y = 486 if compact else 500
     if selected_items:
         for index, item in enumerate(selected_items, start=1):
-            y = draw_news_card(draw, index, item, y, card_accents[(index - 1) % len(card_accents)], fonts)
+            y = draw_news_card(
+                draw,
+                index,
+                item,
+                y,
+                card_accents[(index - 1) % len(card_accents)],
+                fonts,
+                card_height,
+                card_gap,
+            )
     else:
         for index in range(1, 4):
-            y = draw_news_card(draw, index, None, y, card_accents[(index - 1) % len(card_accents)], fonts)
+            y = draw_news_card(
+                draw,
+                index,
+                None,
+                y,
+                card_accents[(index - 1) % len(card_accents)],
+                fonts,
+                card_height,
+                card_gap,
+            )
 
     footer_y = 1280
     draw.line((64, footer_y, 1016, footer_y), fill="#DCE6E0", width=2)

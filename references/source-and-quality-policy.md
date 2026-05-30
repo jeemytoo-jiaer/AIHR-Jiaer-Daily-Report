@@ -14,6 +14,7 @@ Prioritize primary and high-signal sources:
 - Major business and technology outlets with visible publication timestamps
 - Domestic technology/business media with RSS or indexable article pages, including 36Kr, TMTPost, QbitAI, InfoQ China, iFanr, ITHome, Leiphone, OSChina, and SSPAI
 - HR technology outlets only when the article has concrete evidence, named companies, or product details
+- Vertical HR and HR technology sources should be checked before broad AI sources, including HRoot, HRTechChina, Moka, Beisen, HRTech Series, HR Executive, Josh Bersin, Workday, LinkedIn Talent Solutions, SHRM, and credible HR SaaS vendor newsrooms when the page has a visible same-day date.
 
 Avoid:
 
@@ -35,6 +36,13 @@ AI+HR deep focus:
 - `HR tech AI`
 - `workforce AI`
 - `employee experience AI`
+- `people analytics AI`
+- `workforce planning AI`
+- `AI interview`
+- `AI resume screening`
+- `AI onboarding`
+- `AI performance management`
+- `agentic AI HR`
 - `人力资源 AI`
 - `招聘 AI`
 - `猎头 AI`
@@ -42,6 +50,13 @@ AI+HR deep focus:
 - `AI面试`
 - `AI简历筛选`
 - `AI招聘助手`
+- `AI绩效`
+- `AI员工体验`
+- `AI人才管理`
+- `AI组织效率`
+- `数字员工`
+- `AI人事`
+- `AI招聘系统`
 - Domestic site-targeted searches for 36Kr, TMTPost, InfoQ China, HRoot, HRTechChina, and Moka when the query is AI+HR-specific
 
 Global AI speed brief:
@@ -84,3 +99,14 @@ Rank accepted items by:
 5. Specificity of evidence
 
 Prefer fewer strong items over many weak ones.
+
+## AI+HR Classification
+
+Do not rely on the literal string `HR` alone. Treat an item as AI+HR when same-day content connects AI to at least one of these people/organization scenarios:
+
+- recruiting, sourcing, interviewing, resume screening, ATS, candidate experience
+- talent management, performance, learning and development, succession, workforce planning
+- employee experience, onboarding, HR service delivery, HR shared services
+- people analytics, HCM/HRIS, organization efficiency, digital employees, enterprise AI agents used by HR or managers
+
+Vertical HR sources can provide additional confidence, but they do not override the date/link/content quality gate.

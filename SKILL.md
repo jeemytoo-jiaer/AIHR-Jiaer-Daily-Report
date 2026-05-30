@@ -38,11 +38,11 @@ Poster layout:
 
 1. Light grid background with a green-first palette, `Jiaer AIHR` brand mark, and `DAILY AI + HR BRIEF` subtitle.
 2. Large day number, month/year, and weekday as the first visual focus.
-3. Main headline: `今天，AI+HR又向前走了一步。`, or `今天，暂无高质量当日信源。` when no item passes verification.
-4. Five rounded news cards in reverse-priority order, mixing AI+HR and global AI items while prioritizing AI+HR when available.
+3. Main headline must be generated from the day’s accepted items. Use 2-3 concrete topic keywords such as `AI招聘 × 员工体验 × 企业智能体`. If there are no AI+HR items, do not claim AI+HR progress; use `今日AI速递关键词` or `今天，暂无高质量当日信源。`.
+4. Show up to six rounded news cards in reverse-priority order, mixing AI+HR and global AI items while prioritizing AI+HR when available. Card typography and spacing must adapt so every title stays inside its card.
 5. Footer call-to-action: `详细内容点击微信群置顶链接查看～`.
 
-Poster body must not include raw timestamps, backend verification notes, collection statistics, or stale filler. If a module has no accepted item, write `当日无高质量...信息源` for that module.
+Poster body must not include raw timestamps, backend verification notes, collection statistics, stale filler, or generic slogans unrelated to the accepted items. If a module has no accepted item, write `当日无高质量...信息源` for that module.
 
 ## Mandatory Quality Gate
 
@@ -103,7 +103,7 @@ python3 scripts/feishu_oauth.py exchange-code --code 'PASTE_REDIRECTED_URL_HERE'
 
 For GitHub Actions, use `.github/workflows/daily-ai-hr-brief.yml`. It runs at 08:00 Asia/Shanghai (`00:00 UTC`) and expects Feishu secrets to be configured in the GitHub repository. Each run prepends the new daily section to the same Feishu document.
 
-The scheduled run must search both overseas and domestic sources by default. Domestic coverage includes direct RSS feeds where available plus site-targeted searches for Chinese technology, business, AI, and HR technology media. Closed platforms may only be used when the article body, link, and date can be verified without login or manual screenshots.
+The scheduled run must search both overseas and domestic sources by default. AI+HR is the first-priority product promise: search vertical HR technology and HR analyst sources before broad AI feeds, then use global AI sources as a supplement. Closed platforms may only be used when the article body, link, and date can be verified without login or manual screenshots.
 
 The scheduled run inserts the daily poster into the Feishu document for single-day runs and also uploads the PNG as a GitHub Actions artifact together with the Markdown and verification report.
 
