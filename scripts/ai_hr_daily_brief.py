@@ -54,27 +54,56 @@ MODULES = {
 QUERIES = {
     "ai_hr": [
         '("AI HR" OR "AI recruiting" OR "AI hiring")',
+        '("AI hiring layoffs workforce news" OR "AI job market" OR "AI workforce disruption")',
         '("talent acquisition AI" OR "HR tech AI" OR "workforce AI")',
         '("employee experience AI" OR "people analytics AI" OR "workforce planning AI")',
         '("AI interview" OR "AI resume screening" OR "AI onboarding" OR "AI performance management")',
+        '("AI skills gap" OR "AI training employees" OR "AI reskilling" OR "AI upskilling")',
         '("agentic AI HR" OR "AI agent HR" OR "enterprise AI HR")',
         '("人力资源 AI" OR "招聘 AI" OR "猎头 AI")',
+        '("AI 就业" OR "AI 裁员" OR "AI 劳动力" OR "AI 技能培训")',
         '("AI员工" OR "AI面试" OR "AI简历筛选" OR "AI招聘助手")',
         '("AI绩效" OR "AI员工体验" OR "AI人才管理" OR "AI组织效率")',
         '("数字员工" OR "AI人事" OR "AI招聘系统" OR "AI人才盘点")',
         '(site:36kr.com OR site:tmtpost.com OR site:infoq.cn) ("AI HR" OR "AI招聘" OR "人力资源 AI")',
         '(site:hroot.com OR site:hrtechchina.com OR site:mokahr.com OR site:beisen.com) ("AI" OR "人工智能" OR "智能体")',
         '(site:hrtechseries.com OR site:hrexecutive.com OR site:joshbersin.com) ("AI" OR "artificial intelligence" OR "agent")',
+        '(site:shrm.org OR site:workday.com OR site:linkedin.com/business/talent/blog) ("AI" OR "artificial intelligence")',
+        '(site:ailayoff.live OR site:layoffhedge.com OR site:layoffs.fyi) ("AI" OR "layoff" OR "workforce" OR "hiring")',
     ],
     "global_ai": [
         '("artificial intelligence" OR "generative AI")',
         '("AI regulation" OR "AI safety" OR "AI model release")',
         '("OpenAI" OR "Google DeepMind" OR "Anthropic" OR "Microsoft AI" OR "NVIDIA AI")',
+        '("AI startup funding" OR "AI IPO" OR "AI industry news")',
+        '("AI model release" OR "AI product launch" OR "enterprise AI")',
         '("人工智能" OR "大模型" OR "生成式AI")',
+        '("AI 最新动态" OR "人工智能 今日热点" OR "大模型 发布")',
         '(site:36kr.com OR site:tmtpost.com OR site:qbitai.com OR site:jiqizhixin.com) ("人工智能" OR "大模型" OR "AI")',
         '(site:ithome.com OR site:leiphone.com OR site:infoq.cn OR site:ifanr.com) ("AI" OR "人工智能" OR "大模型")',
+        '(site:cnbc.com OR site:techcrunch.com OR site:theverge.com OR site:reuters.com) ("AI" OR "artificial intelligence")',
+        '(site:openai.com OR site:anthropic.com OR site:deepmind.google OR site:huggingface.co) ("AI" OR "model" OR "research")',
     ],
 }
+
+AI_HR_FALLBACK_QUERIES = [
+    '("AI workforce" OR "AI employment" OR "AI jobs" OR "AI layoffs")',
+    '("AI hiring" OR "AI recruiting" OR "AI interview" OR "AI resume screening")',
+    '("AI skills" OR "AI reskilling" OR "AI training" OR "learning and development AI")',
+    '("HR technology AI" OR "people analytics AI" OR "talent management AI")',
+    '("AI 就业" OR "AI 裁员" OR "AI 招聘" OR "AI 人才")',
+    '("AI 技能" OR "AI 培训" OR "AI 学习发展" OR "AI 组织效率")',
+    '(site:hroot.com OR site:hrtechchina.com OR site:mokahr.com OR site:beisen.com) ("AI" OR "人工智能" OR "招聘" OR "人才")',
+    '(site:shrm.org OR site:hrexecutive.com OR site:hrtechseries.com OR site:joshbersin.com) ("AI" OR "artificial intelligence") ("workforce" OR "talent" OR "HR")',
+]
+
+AI_HR_SHORTAGE_THRESHOLD = 3
+
+AIHOT_DISCOVERY_URLS = [
+    "https://aihot.virxact.com/",
+    "https://aihot.virxact.com/all",
+]
+AIHOT_DISCOVERY_LIMIT = 18
 
 DIRECT_RSS_FEEDS = {
     "ai_hr": [
@@ -109,7 +138,19 @@ HR_KEYWORDS = [
     "jobs",
     "talent",
     "workforce",
+    "headcount",
+    "staffing",
+    "employment",
     "employee",
+    "layoff",
+    "layoffs",
+    "reskilling",
+    "upskilling",
+    "skill",
+    "skills",
+    "training",
+    "learning and development",
+    "l&d",
     "ats",
     "hcm",
     "hris",
@@ -132,6 +173,13 @@ HR_KEYWORDS = [
     "绩效",
     "薪酬",
     "组织",
+    "就业",
+    "劳动力",
+    "就业市场",
+    "裁员",
+    "技能",
+    "再培训",
+    "转岗",
     "用工",
     "人效",
     "员工体验",
@@ -143,6 +191,7 @@ HR_KEYWORDS = [
     "入职",
     "背调",
     "培训",
+    "学习",
     "学习发展",
     "数字员工",
     "飞书人事",
@@ -174,6 +223,25 @@ HR_FOCUSED_SOURCE_HINTS = [
     "beisen",
     "北森",
     "肯耐珂萨",
+    "shrm",
+    "workday",
+    "linkedin talent",
+    "ailayoff",
+    "layoffhedge",
+    "layoffs.fyi",
+]
+
+SOURCE_PRIORITY_HINTS = [
+    (12, ["openai.com", "anthropic.com", "deepmind.google", "microsoft.com", "nvidia.com", "apple.com/newsroom", "huggingface.co", "arxiv.org"]),
+    (11, ["workday.com", "linkedin.com/business/talent", "shrm.org", "joshbersin.com", "hrexecutive.com", "hrtechseries.com", "hroot.com", "hrtechchina.com", "mokahr.com", "beisen.com"]),
+    (10, ["reuters.com", "bloomberg.com", "wsj.com", "cnbc.com", "techcrunch.com", "theverge.com"]),
+    (9, ["36kr.com", "qbitai.com", "jiqizhixin.com", "infoq.cn", "tmtpost.com", "ithome.com", "leiphone.com"]),
+    (8, ["ailayoff.live", "layoffhedge.com", "layoffs.fyi"]),
+]
+
+LOW_VERIFICATION_DOMAINS = [
+    "x.com",
+    "twitter.com",
 ]
 
 POSTER_THEME_RULES = [
@@ -353,8 +421,10 @@ def decode_source_url(url: str) -> str:
 def google_news_rss_url(query: str, lang: str, day: dt.date | None = None) -> str:
     date_filter = "when:1d"
     if day is not None:
-        next_day = day + dt.timedelta(days=1)
-        date_filter = f"after:{day.isoformat()} before:{next_day.isoformat()}"
+        today = dt.datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        if day != today:
+            next_day = day + dt.timedelta(days=1)
+            date_filter = f"after:{day.isoformat()} before:{next_day.isoformat()}"
     if lang == "zh":
         params = {"q": f"{query} {date_filter}", "hl": "zh-CN", "gl": "CN", "ceid": "CN:zh-Hans"}
     else:
@@ -479,10 +549,175 @@ def add_feed_candidates(
     return False
 
 
+def add_google_news_candidates(
+    module: str,
+    queries: list[str],
+    tz: ZoneInfo,
+    timeout: int,
+    max_per_feed: int,
+    max_total: int,
+    day: dt.date | None,
+    candidates: list[Candidate],
+    rejected: list[RejectedItem],
+    seen_urls: set[str],
+) -> bool:
+    for query in queries:
+        langs = ["zh", "en"] if module == "ai_hr" else ["en", "zh"]
+        for lang in langs:
+            feed_url = google_news_rss_url(query, lang, day)
+            try:
+                status, _, body = request_url(feed_url, timeout)
+                if status != 200:
+                    rejected.append(RejectedItem(module, query, feed_url, f"RSS status {status}", query=query))
+                    continue
+                root = ET.fromstring(body)
+            except Exception as exc:  # noqa: BLE001 - recorded in verification report.
+                rejected.append(RejectedItem(module, query, feed_url, f"RSS fetch/parse failed: {exc}", query=query))
+                continue
+
+            if add_feed_candidates(root, module, feed_url, "Google News", query, tz, max_per_feed, max_total, candidates, seen_urls):
+                return True
+    return False
+
+
+def collect_aihot_candidates(
+    tz: ZoneInfo,
+    timeout: int,
+    max_total: int,
+    day: dt.date | None,
+    candidates: list[Candidate],
+    rejected: list[RejectedItem],
+    seen_urls: set[str],
+) -> None:
+    target_doc_date = fmt_doc_date(day) if day else None
+    discovered: list[tuple[bool, int, str, Candidate]] = []
+    local_seen_urls: set[str] = set()
+    for discovery_url in AIHOT_DISCOVERY_URLS:
+        try:
+            status, _, body = request_url(discovery_url, timeout)
+            if status != 200:
+                rejected.append(RejectedItem("global_ai", "AIHot", discovery_url, f"AIHot status {status}", "AIHot", "aihot"))
+                continue
+        except Exception as exc:  # noqa: BLE001 - discovery failure is non-fatal.
+            rejected.append(RejectedItem("global_ai", "AIHot", discovery_url, f"AIHot fetch failed: {exc}", "AIHot", "aihot"))
+            continue
+
+        for item in parse_aihot_records(body, tz):
+            url = item["url"]
+            normalized_url = normalize_url(url)
+            if normalized_url in seen_urls or normalized_url in local_seen_urls or is_low_verification_url(url):
+                continue
+            published_date = item["published_local_date"]
+            if target_doc_date and published_date != target_doc_date:
+                continue
+            local_seen_urls.add(normalized_url)
+            module = "ai_hr" if aihot_ai_hr_relevance(item["title"], item["summary"], item["source"], url) else "global_ai"
+            discovered.append(
+                (
+                    item["selected"],
+                    item["score"],
+                    item["published_at"] or "",
+                    Candidate(
+                        module=module,
+                        title=item["title"],
+                        url=url,
+                        source=item["source"] or "AIHot",
+                        feed_published_at=item["published_at"],
+                        feed_published_local_date=published_date,
+                        query="aihot:selected" if item["selected"] else "aihot:all",
+                        feed=discovery_url,
+                    ),
+                )
+            )
+
+    discovered.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    remaining_slots = max(0, max_total - len(candidates))
+    for _, _, _, candidate in discovered[: min(AIHOT_DISCOVERY_LIMIT, remaining_slots)]:
+        seen_urls.add(normalize_url(candidate.url))
+        candidates.append(candidate)
+
+
+def aihot_ai_hr_relevance(title: str, summary: str, source: str, url: str) -> bool:
+    title_source = f"{title} {source}"
+    if has_keywords(title_source, HR_KEYWORDS) or is_hr_focused_source(source, url):
+        return True
+    if keyword_hit_count(summary, HR_KEYWORDS) >= 2:
+        return True
+    workforce_phrases = [
+        "headcount",
+        "slow hiring",
+        "job cuts",
+        "workforce reduction",
+        "员工减少",
+        "放缓招聘",
+        "减少员工",
+        "岗位减少",
+        "裁员",
+    ]
+    summary_lower = summary.lower()
+    return any(phrase in summary_lower for phrase in workforce_phrases)
+
+
+def parse_aihot_records(body: str, tz: ZoneInfo) -> list[dict[str, Any]]:
+    pattern = re.compile(
+        r'\{\\"id\\":\\"[^\\"]+\\",\\"url\\":\\"(?P<url>(?:\\\\.|[^\\"])*)\\",'
+        r'\\"title\\":\\"(?P<title>(?:\\\\.|[^\\"])*)\\",'
+        r'\\"titleZh\\":\\"(?P<title_zh>(?:\\\\.|[^\\"])*)\\",'
+        r'\\"summaryZh\\":\\"(?P<summary_zh>(?:\\\\.|[^\\"])*)\\".*?'
+        r'\\"publishedAt\\":\\"(?P<published_at>[^\\"]+)\\".*?'
+        r'\\"aiSelected\\":(?P<selected>true|false).*?'
+        r'\\"finalScore\\":(?P<score>\d+).*?'
+        r'\\"source\\":\{\\"id\\":\\"[^\\"]+\\",\\"name\\":\\"(?P<source>(?:\\\\.|[^\\"])*)\\"',
+        re.S,
+    )
+    records: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for match in pattern.finditer(body):
+        url = decode_aihot_string(match.group("url"))
+        normalized_url = normalize_url(url)
+        if not url or normalized_url in seen_urls:
+            continue
+        seen_urls.add(normalized_url)
+
+        title_zh = decode_aihot_string(match.group("title_zh"))
+        title = title_zh or decode_aihot_string(match.group("title"))
+        published_value = match.group("published_at")
+        published_dt = parse_iso_datetime(published_value)
+        published_at = local_datetime_label(published_dt, tz) if published_dt else published_value
+        published_local_date = local_date(published_dt, tz) if published_dt else None
+        records.append(
+            {
+                "url": url,
+                "title": clean_text(title),
+                "summary": clean_text(decode_aihot_string(match.group("summary_zh"))),
+                "source": clean_text(decode_aihot_string(match.group("source"))),
+                "published_at": published_at,
+                "published_local_date": published_local_date,
+                "selected": match.group("selected") == "true",
+                "score": int(match.group("score")),
+            }
+        )
+    return records
+
+
+def decode_aihot_string(value: str) -> str:
+    try:
+        return html.unescape(json.loads(f'"{value}"'))
+    except json.JSONDecodeError:
+        return html.unescape(value.replace(r"\"", '"').replace(r"\n", " "))
+
+
+def is_low_verification_url(url: str) -> bool:
+    host = urllib.parse.urlparse(url).netloc.lower()
+    return any(domain == host or host.endswith(f".{domain}") for domain in LOW_VERIFICATION_DOMAINS)
+
+
 def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total: int, day: dt.date | None = None) -> tuple[list[Candidate], list[RejectedItem]]:
     candidates: list[Candidate] = []
     rejected: list[RejectedItem] = []
     seen_urls: set[str] = set()
+
+    collect_aihot_candidates(tz, timeout, max_total, day, candidates, rejected, seen_urls)
 
     # AI+HR is the core product promise, so vertical HR feeds get the first slots
     # before broader Google News and general AI feeds can fill the candidate pool.
@@ -514,22 +749,8 @@ def collect_candidates(tz: ZoneInfo, timeout: int, max_per_feed: int, max_total:
             return candidates, rejected
 
     for module, queries in QUERIES.items():
-        for query in queries:
-            langs = ["zh", "en"] if module == "ai_hr" else ["en", "zh"]
-            for lang in langs:
-                feed_url = google_news_rss_url(query, lang, day)
-                try:
-                    status, _, body = request_url(feed_url, timeout)
-                    if status != 200:
-                        rejected.append(RejectedItem(module, query, feed_url, f"RSS status {status}", query=query))
-                        continue
-                    root = ET.fromstring(body)
-                except Exception as exc:  # noqa: BLE001 - recorded in verification report.
-                    rejected.append(RejectedItem(module, query, feed_url, f"RSS fetch/parse failed: {exc}", query=query))
-                    continue
-
-                if add_feed_candidates(root, module, feed_url, "Google News", query, tz, max_per_feed, max_total, candidates, seen_urls):
-                    return candidates, rejected
+        if add_google_news_candidates(module, queries, tz, timeout, max_per_feed, max_total, day, candidates, rejected, seen_urls):
+            return candidates, rejected
 
     for module, feeds in DIRECT_RSS_FEEDS.items():
         for source_name, feed_url in feeds:
@@ -684,6 +905,20 @@ def relevance_note(module: str, title: str, text: str, source: str = "", url: st
     return "属于全球AI产品、监管、模型、资本或产业动态，适合补充社群的宏观AI判断。"
 
 
+def source_priority(source: str = "", url: str = "", query: str = "") -> int:
+    parsed_host = urllib.parse.urlparse(url or "").netloc.lower()
+    haystack = f"{source} {parsed_host} {url} {query}".lower()
+    for priority, hints in SOURCE_PRIORITY_HINTS:
+        for hint in hints:
+            normalized_hint = hint.lower()
+            short_hint = re.sub(r"\.(com|org|cn|net|io|live|fyi|google)(/.*)?$", "", normalized_hint)
+            if normalized_hint in haystack or (short_hint and short_hint in haystack):
+                return priority
+    if source and source.lower() not in {"unknown", "google news"}:
+        return 6
+    return 4
+
+
 def score_item(module: str, title: str, text: str, source: str, url: str = "", query: str = "") -> int:
     combined = f"{title} {text[:2000]}".lower()
     score = 0
@@ -694,8 +929,7 @@ def score_item(module: str, title: str, text: str, source: str, url: str = "", q
         score += min(keyword_hit_count(text[:2000], HR_KEYWORDS) * 2, 8)
         if is_hr_focused_source(source, url, query):
             score += 8
-    if source and source.lower() not in {"unknown", "google news"}:
-        score += 2
+    score += source_priority(source, url, query)
     if any(name in combined for name in ["openai", "anthropic", "google", "microsoft", "nvidia"]):
         score += 1
     return score
@@ -821,19 +1055,44 @@ def verify_candidates(
 
 
 def dedupe_and_limit(items: list[AcceptedItem], limit: int) -> list[AcceptedItem]:
-    by_url: dict[str, AcceptedItem] = {}
-    for item in items:
-        key = normalize_url(item.final_url or item.url)
-        old = by_url.get(key)
-        if old is None or item.score > old.score:
-            by_url[key] = item
-
     result: list[AcceptedItem] = []
     for module in MODULES:
-        module_items = [item for item in by_url.values() if item.module == module]
-        module_items.sort(key=lambda item: (item.published_at, item.score), reverse=True)
-        result.extend(module_items[:limit])
+        module_items = [item for item in items if item.module == module]
+        unique_items = dedupe_event_items(module_items)
+        unique_items.sort(
+            key=lambda item: (
+                item.published_at,
+                item.score + source_priority(item.source, item.final_url or item.url),
+                source_priority(item.source, item.final_url or item.url),
+            ),
+            reverse=True,
+        )
+        result.extend(unique_items[:limit])
     return result
+
+
+def dedupe_event_items(items: list[AcceptedItem]) -> list[AcceptedItem]:
+    groups: list[list[AcceptedItem]] = []
+    for item in items:
+        item_url = normalize_url(item.final_url or item.url)
+        matched_group: list[AcceptedItem] | None = None
+        for group in groups:
+            if any(normalize_url(existing.final_url or existing.url) == item_url for existing in group):
+                matched_group = group
+                break
+            if title_similarity(item.title, group[0].title) >= 0.62:
+                matched_group = group
+                break
+        if matched_group is None:
+            groups.append([item])
+        else:
+            matched_group.append(item)
+    return [max(group, key=item_rank_key) for group in groups]
+
+
+def item_rank_key(item: AcceptedItem) -> tuple[int, int, str]:
+    priority = source_priority(item.source, item.final_url or item.url)
+    return (priority, item.score, item.published_at)
 
 
 def normalize_url(url: str) -> str:
@@ -841,6 +1100,31 @@ def normalize_url(url: str) -> str:
     query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=False)
     query = [(key, value) for key, value in query if not key.lower().startswith("utm_")]
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", urllib.parse.urlencode(query), ""))
+
+
+def title_similarity(first: str, second: str) -> float:
+    first_tokens = title_tokens(first)
+    second_tokens = title_tokens(second)
+    if not first_tokens or not second_tokens:
+        return 0.0
+    overlap = len(first_tokens & second_tokens)
+    union = len(first_tokens | second_tokens)
+    return overlap / union if union else 0.0
+
+
+def title_tokens(title: str) -> set[str]:
+    text = clean_text(title).lower()
+    text = re.sub(r"\s+[-–—]\s+[^-–—]{2,40}$", "", text)
+    english = re.findall(r"[a-z0-9]{2,}", text)
+    chinese_segments = re.findall(r"[\u4e00-\u9fff]+", text)
+    chinese_tokens: list[str] = []
+    for segment in chinese_segments:
+        if len(segment) == 1:
+            chinese_tokens.append(segment)
+        else:
+            chinese_tokens.extend(segment[index : index + 2] for index in range(len(segment) - 1))
+    stopwords = {"news", "daily", "today", "latest", "update", "updates"}
+    return {token for token in english + chinese_tokens if token not in stopwords}
 
 
 def render_markdown(day: dt.date, accepted: list[AcceptedItem], rejected: list[RejectedItem]) -> str:
@@ -1676,6 +1960,38 @@ def main() -> int:
             args.allow_backfill or len(days) > 1,
         )
         rejected = rss_rejections + verification_rejections
+        ai_hr_count = len([item for item in accepted if item.module == "ai_hr"])
+        if ai_hr_count < AI_HR_SHORTAGE_THRESHOLD:
+            seen_urls = {candidate.url for candidate in candidates}
+            fallback_candidates: list[Candidate] = []
+            fallback_rss_rejections: list[RejectedItem] = []
+            add_google_news_candidates(
+                "ai_hr",
+                AI_HR_FALLBACK_QUERIES,
+                tz,
+                args.timeout,
+                args.max_candidates_per_feed + 1,
+                max(args.max_total_candidates // 2, 24),
+                day,
+                fallback_candidates,
+                fallback_rss_rejections,
+                seen_urls,
+            )
+            if fallback_candidates:
+                fallback_accepted, fallback_verification_rejections = verify_candidates(
+                    fallback_candidates,
+                    day,
+                    tz,
+                    args.timeout,
+                    args.max_items_per_module,
+                    args.allow_backfill or len(days) > 1,
+                )
+                accepted = dedupe_and_limit(accepted + fallback_accepted, args.max_items_per_module)
+                candidates.extend(fallback_candidates)
+                rejected.extend(fallback_rss_rejections + fallback_verification_rejections)
+            else:
+                rejected.extend(fallback_rss_rejections)
+
         markdown_path, poster_path = write_outputs(
             output_dir / fmt_doc_date(day) if len(days) > 1 else output_dir,
             day,

@@ -57,10 +57,26 @@ Before writing to Feishu, complete this checklist exactly:
 ## Workflow
 
 1. Load `references/source-and-quality-policy.md` when selecting sources, queries, and acceptance criteria.
-2. Run `scripts/ai_hr_daily_brief.py` to collect, verify, rank, and render the brief.
-3. If publishing to Feishu, load `references/feishu-setup.md`, provide the required environment variables, and run the script with `--publish-feishu`.
-4. Review the generated `verification_report.json` before publishing when the result contains any accepted item.
-5. Keep the final human-facing summary concise: daily section date, accepted item counts, rejected item counts, Feishu URL if published, and any residual risk.
+2. Use the three-layer acquisition method before rendering:
+- First preference: structured AI daily aggregators such as AIHot when a stable, date-verifiable feed/API is available. Treat aggregators as discovery sources; still verify original article URL, body, and date.
+   - Second layer: parallel bilingual search across Chinese AI, English AI, Chinese AI+HR, English AI+HR/workforce, model/product launches, and capital/industry news.
+   - Third layer: fetch the original article page and keep only items whose body, link, and date pass the quality gate.
+3. Run `scripts/ai_hr_daily_brief.py` to collect, verify, rank, and render the brief.
+4. If publishing to Feishu, load `references/feishu-setup.md`, provide the required environment variables, and run the script with `--publish-feishu`.
+5. Review the generated `verification_report.json` before publishing when the result contains any accepted item.
+6. Keep the final human-facing summary concise: daily section date, accepted item counts, rejected item counts, Feishu URL if published, and any residual risk.
+
+## Acquisition Rules
+
+AI+HR is the first-priority promise, not a cosmetic module. The scheduled workflow must search HR, recruiting, workforce, employment, layoff, skills, training, reskilling, people analytics, HCM, HRIS, employee experience, and organization-efficiency angles before filling the document with general AI news.
+
+If fewer than three AI+HR items pass verification, automatically run a same-day fallback search with broader workforce/employment keywords. Do not expand the final accepted date window to old news unless the user explicitly asks for background research. If fallback still produces no qualified item, write `当日无高质量信息源`.
+
+Deduplicate by event similarity, not just URL. When the same event appears in several places, keep the highest-quality source in this order: official/company/regulator source, major mainstream/technology media, vertical HR source with evidence, domestic technology/business media, then smaller secondary sources.
+
+For AI+HR items, the reader-facing summary should explain the practical implication for recruiting, talent development, workforce planning, employee experience, performance management, or organizational efficiency. Do not publish generic lines that merely say the item is relevant to HR.
+
+When borrowing from AIHot-style pages, use only the useful discovery signals: selected status, final/quality score, Chinese title/summary, source name, source kind, publish time, tags, duplicate count, and recommendation reason. Do not publish AIHot's summary as the final fact without opening the original article. Skip weakly verifiable social links such as X/Twitter unless they lead to a separately verifiable original source.
 
 ## Script Quick Start
 
